@@ -49,6 +49,12 @@ resource "aws_lambda_function" "example" {
   handler          = "doesnt.matter"
   runtime          = "provided"
   memory_size      = 256
+
+  environment {
+    variables = {
+      RUST_BACKTRACE = "1"
+    }
+  }
 }
 
 //
