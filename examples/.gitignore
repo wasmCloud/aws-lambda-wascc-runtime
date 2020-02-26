@@ -1,0 +1,6 @@
+.terraform/
+
+terraform.tfstate
+
+bootstrap
+app.zip
