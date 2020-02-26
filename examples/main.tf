@@ -44,7 +44,7 @@ data "archive_file" "lambda_zip" {
 resource "aws_lambda_function" "example" {
   filename         = data.archive_file.lambda_zip.output_path
   source_code_hash = data.archive_file.lambda_zip.output_base64sha256
-  function_name    = "waSCC example"
+  function_name    = "waSCC-example"
   role             = aws_iam_role.example.arn
   handler          = "doesnt.matter"
   runtime          = "provided"
