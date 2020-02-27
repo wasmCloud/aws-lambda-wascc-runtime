@@ -53,6 +53,7 @@ resource "aws_lambda_function" "example" {
   environment {
     variables = {
       RUST_BACKTRACE = "1"
+      RUST_LOG       = "debug"
     }
   }
 }

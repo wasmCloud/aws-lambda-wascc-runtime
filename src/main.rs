@@ -1,10 +1,10 @@
+use env_logger;
 use lambda_runtime_core::{lambda, Context, HandlerError};
-use log::{info, Level};
-use simple_logger;
+use log::info;
 use std::error::Error;
 
 fn main() -> Result<(), Box<dyn Error>> {
-    simple_logger::init_with_level(Level::Debug)?;
+    env_logger::init();
 
     lambda!(wascc_handler);
 
