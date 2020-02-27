@@ -6,20 +6,24 @@
 
 ### To Build
 
+Install the `x86_64-unknown-linux-musl` build target
+
 ```console
-% rustup target list
-% rustup target install x86_64-unknown-linux-gnu
+$ sudo apt-get install musl musl-dev musl-tools
+$ rustup target list
+$ rustup target install x86_64-unknown-linux-musl
 ```
 
 ```console
 $ cd aws-lambda-wascc-runtime
-$ cargo build --release --target x86_64-unknown-linux-gnu
-$ cp ./target/release/aws-lambda-wascc-runtime ./examples/bootstrap
+$ cargo build --release --target x86_64-unknown-linux-musl
+$ cp ./target/x86_64-unknown-linux-musl/release/aws-lambda-wascc-runtime ./examples/bootstrap
 ```
 
 ### To Deploy
 
 ```console
+$ cd examples
 $ terraform init
 $ terraform apply
 ```
