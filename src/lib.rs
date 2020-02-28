@@ -8,7 +8,7 @@ use codec::core::{CapabilityConfiguration, OP_CONFIGURE, OP_REMOVE_ACTOR};
 use env_logger;
 use prost::Message;
 use std::collections::HashMap;
-use std::env;
+
 use std::error::Error;
 use std::sync::{Arc, RwLock};
 use std::thread;
@@ -47,7 +47,10 @@ impl AwsLambdaRuntimeProvider {
         debug!("start_runtime_client");
 
         let client_shutdown = self.client_shutdown.clone();
-        let endpoint = env::var("AWS_LAMBDA_RUNTIME_API")?;
+        let endpoint = match config.values.get("AWS_LAMBDA_RUNTIME_API") {
+            Some(ep) => ep.clone(),
+            None => return Err("Missing configuration value: AWS_LAMBDA_RUNTIME_API".into()),
+        };
         let module_id = config.module;
         thread::spawn(move || {
             info!("Starting runtime client for actor {}", module_id);
