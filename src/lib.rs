@@ -7,14 +7,17 @@ use codec::capabilities::{CapabilityProvider, Dispatcher, NullDispatcher};
 use codec::core::{CapabilityConfiguration, OP_CONFIGURE, OP_REMOVE_ACTOR};
 use env_logger;
 use prost::Message;
+use std::collections::HashMap;
 use std::error::Error;
 use std::sync::{Arc, RwLock};
+use std::thread;
 
 const CAPABILITY_ID: &str = "awslambda:runtime";
 
 capability_provider!(AwsLambdaRuntimeProvider, AwsLambdaRuntimeProvider::new);
 
 pub struct AwsLambdaRuntimeProvider {
+    clients: Arc<RwLock<HashMap<String, thread::JoinHandle<()>>>>,
     dispatcher: Arc<RwLock<Box<dyn Dispatcher>>>,
 }
 
@@ -27,6 +30,7 @@ impl Default for AwsLambdaRuntimeProvider {
         };
 
         AwsLambdaRuntimeProvider {
+            clients: Arc::new(RwLock::new(HashMap::new())),
             dispatcher: Arc::new(RwLock::new(Box::new(NullDispatcher::new()))),
         }
     }
@@ -38,20 +42,33 @@ impl AwsLambdaRuntimeProvider {
         Self::default()
     }
 
-    // Configures this provider.
-    fn configure(&self, config: CapabilityConfiguration) -> Result<Vec<u8>, Box<dyn Error>> {
-        debug!("configure");
+    // Starts the Lambda runtime client.
+    fn start_runtime_client(&self, config: CapabilityConfiguration) -> Result<Vec<u8>, Box<dyn Error>> {
+        debug!("start_runtime_client");
 
-        let _config = config.values;
+        let module_id = config.module;
+
+        let handle = thread::spawn(move || {
+
+        });
+        info!("Started runtime client for actor {}", module_id);
+
+        self.clients.write().unwrap().insert(module_id, handle);
 
         Ok(vec![])
     }
 
-    // Removes an actor.
-    fn remove_actor(&self, config: CapabilityConfiguration) -> Result<Vec<u8>, Box<dyn Error>> {
-        debug!("remove_actor");
+    // Stops any running Lambda runtime client.
+    fn stop_runtime_client(&self, config: CapabilityConfiguration) -> Result<Vec<u8>, Box<dyn Error>> {
+        debug!("stop_runtime_client");
 
-        let _config = config.values;
+        let module_id = config.module;
+        let lock = self.clients.read().unwrap();
+        if lock.contains_key(&module_id) {
+
+        } else {
+            error!("Received request to stop runtime client for unknown actor {}. Ignoring", module_id);
+        }
 
         Ok(vec![])
     }
@@ -82,10 +99,10 @@ impl CapabilityProvider for AwsLambdaRuntimeProvider {
 
         match op {
             OP_CONFIGURE if actor == "system" => {
-                self.configure(CapabilityConfiguration::decode(msg)?)
+                self.start_runtime_client(CapabilityConfiguration::decode(msg)?)
             }
             OP_REMOVE_ACTOR if actor == "system" => {
-                self.remove_actor(CapabilityConfiguration::decode(msg)?)
+                self.stop_runtime_client(CapabilityConfiguration::decode(msg)?)
             }
             _ => Err(format!("Unsupported operation: {}", op).into()),
         }
