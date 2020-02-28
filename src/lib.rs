@@ -9,6 +9,7 @@ use env_logger;
 use prost::Message;
 use std::collections::HashMap;
 use std::error::Error;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, RwLock};
 use std::thread;
 
@@ -17,20 +18,19 @@ const CAPABILITY_ID: &str = "awslambda:runtime";
 capability_provider!(AwsLambdaRuntimeProvider, AwsLambdaRuntimeProvider::new);
 
 pub struct AwsLambdaRuntimeProvider {
-    clients: Arc<RwLock<HashMap<String, thread::JoinHandle<()>>>>,
+    client_shutdown: Arc<RwLock<HashMap<String, bool>>>,
     dispatcher: Arc<RwLock<Box<dyn Dispatcher>>>,
 }
 
 impl Default for AwsLambdaRuntimeProvider {
     // Returns the default value for `AwsLambdaRuntimeProvider`.
     fn default() -> Self {
-        match env_logger::try_init() {
-            Ok(_) => {}
-            Err(_) => info!("Logger already intialized, skipping"),
-        };
+        if env_logger::try_init().is_err() {
+            info!("Logger already intialized");
+        }
 
         AwsLambdaRuntimeProvider {
-            clients: Arc::new(RwLock::new(HashMap::new())),
+            client_shutdown: Arc::new(RwLock::new(HashMap::new())),
             dispatcher: Arc::new(RwLock::new(Box::new(NullDispatcher::new()))),
         }
     }
@@ -43,34 +43,32 @@ impl AwsLambdaRuntimeProvider {
     }
 
     // Starts the Lambda runtime client.
-    fn start_runtime_client(&self, config: CapabilityConfiguration) -> Result<Vec<u8>, Box<dyn Error>> {
+    fn start_runtime_client(&self, config: CapabilityConfiguration) {
         debug!("start_runtime_client");
 
-        let module_id = config.module;
+        let module_id = config.module.clone();
+        info!("Starting runtime client for actor {}", module_id);
 
-        let handle = thread::spawn(move || {
-
+        let client_shutdown = self.client_shutdown.clone();
+        thread::spawn(move || {
+            // Initialize this client's shutdown flag.
+            client_shutdown.write().unwrap().insert(module_id, false);
         });
-        info!("Started runtime client for actor {}", module_id);
-
-        self.clients.write().unwrap().insert(module_id, handle);
-
-        Ok(vec![])
     }
 
     // Stops any running Lambda runtime client.
-    fn stop_runtime_client(&self, config: CapabilityConfiguration) -> Result<Vec<u8>, Box<dyn Error>> {
+    fn stop_runtime_client(&self, config: CapabilityConfiguration) {
         debug!("stop_runtime_client");
 
-        let module_id = config.module;
-        let lock = self.clients.read().unwrap();
-        if lock.contains_key(&module_id) {
-
-        } else {
-            error!("Received request to stop runtime client for unknown actor {}. Ignoring", module_id);
+        let module_id = &config.module;
+        {
+            let mut client_shutdown = self.client_shutdown.write().unwrap();
+            if !client_shutdown.contains_key(module_id) {
+                error!("Received request to stop runtime client for unknown actor {}. Ignoring", module_id);
+                return;
+            }
+            *client_shutdown.get_mut(module_id).unwrap() = true;
         }
-
-        Ok(vec![])
     }
 }
 
@@ -84,10 +82,7 @@ impl CapabilityProvider for AwsLambdaRuntimeProvider {
     fn configure_dispatch(&self, dispatcher: Box<dyn Dispatcher>) -> Result<(), Box<dyn Error>> {
         info!("Dispatcher received");
 
-        let mut lock = match self.dispatcher.write() {
-            Ok(x) => x,
-            Err(e) => return Err(e.description().into()),
-        };
+        let mut lock = self.dispatcher.write().unwrap();
         *lock = dispatcher;
 
         Ok(())
@@ -104,8 +99,10 @@ impl CapabilityProvider for AwsLambdaRuntimeProvider {
             OP_REMOVE_ACTOR if actor == "system" => {
                 self.stop_runtime_client(CapabilityConfiguration::decode(msg)?)
             }
-            _ => Err(format!("Unsupported operation: {}", op).into()),
+            _ => return Err(format!("Unsupported operation: {}", op).into()),
         }
+
+        Ok(vec![])
     }
 
     // Returns the human-readable, friendly name of this capability provider.
