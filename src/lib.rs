@@ -9,7 +9,6 @@ use env_logger;
 use prost::Message;
 use std::collections::HashMap;
 use std::error::Error;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, RwLock};
 use std::thread;
 
@@ -46,13 +45,19 @@ impl AwsLambdaRuntimeProvider {
     fn start_runtime_client(&self, config: CapabilityConfiguration) {
         debug!("start_runtime_client");
 
-        let module_id = config.module.clone();
-        info!("Starting runtime client for actor {}", module_id);
-
+        let module_id = config.module;
         let client_shutdown = self.client_shutdown.clone();
         thread::spawn(move || {
+            info!("Starting runtime client for actor {}", module_id);
+
             // Initialize this client's shutdown flag.
-            client_shutdown.write().unwrap().insert(module_id, false);
+            client_shutdown.write().unwrap().insert(module_id.clone(), false);
+
+            loop {
+                if *client_shutdown.read().unwrap().get(&module_id).unwrap() {
+                    break;
+                }
+            }
         });
     }
 
@@ -62,12 +67,16 @@ impl AwsLambdaRuntimeProvider {
 
         let module_id = &config.module;
         {
-            let mut client_shutdown = self.client_shutdown.write().unwrap();
-            if !client_shutdown.contains_key(module_id) {
+            let mut lock = self.client_shutdown.write().unwrap();
+            if !lock.contains_key(module_id) {
                 error!("Received request to stop runtime client for unknown actor {}. Ignoring", module_id);
                 return;
             }
-            *client_shutdown.get_mut(module_id).unwrap() = true;
+            *lock.get_mut(module_id).unwrap() = true;
+        }
+        {
+            let mut lock = self.client_shutdown.write().unwrap();
+            lock.remove(module_id).unwrap();
         }
     }
 }
