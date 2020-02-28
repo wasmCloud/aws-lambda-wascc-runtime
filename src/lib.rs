@@ -51,7 +51,10 @@ impl AwsLambdaRuntimeProvider {
             info!("Starting runtime client for actor {}", module_id);
 
             // Initialize this client's shutdown flag.
-            client_shutdown.write().unwrap().insert(module_id.clone(), false);
+            client_shutdown
+                .write()
+                .unwrap()
+                .insert(module_id.clone(), false);
 
             loop {
                 if *client_shutdown.read().unwrap().get(&module_id).unwrap() {
@@ -69,7 +72,10 @@ impl AwsLambdaRuntimeProvider {
         {
             let mut lock = self.client_shutdown.write().unwrap();
             if !lock.contains_key(module_id) {
-                error!("Received request to stop runtime client for unknown actor {}. Ignoring", module_id);
+                error!(
+                    "Received request to stop runtime client for unknown actor {}. Ignoring",
+                    module_id
+                );
                 return;
             }
             *lock.get_mut(module_id).unwrap() = true;
