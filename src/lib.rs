@@ -8,6 +8,7 @@ use codec::core::{CapabilityConfiguration, OP_CONFIGURE, OP_REMOVE_ACTOR};
 use env_logger;
 use prost::Message;
 use std::collections::HashMap;
+use std::env;
 use std::error::Error;
 use std::sync::{Arc, RwLock};
 use std::thread;
@@ -42,11 +43,12 @@ impl AwsLambdaRuntimeProvider {
     }
 
     // Starts the Lambda runtime client.
-    fn start_runtime_client(&self, config: CapabilityConfiguration) {
+    fn start_runtime_client(&self, config: CapabilityConfiguration) -> Result<(), Box<dyn Error>> {
         debug!("start_runtime_client");
 
-        let module_id = config.module;
         let client_shutdown = self.client_shutdown.clone();
+        let endpoint = env::var("AWS_LAMBDA_RUNTIME_API")?;
+        let module_id = config.module;
         thread::spawn(move || {
             info!("Starting runtime client for actor {}", module_id);
 
@@ -56,16 +58,39 @@ impl AwsLambdaRuntimeProvider {
                 .unwrap()
                 .insert(module_id.clone(), false);
 
+            let client = reqwest::blocking::Client::new();
+
             loop {
                 if *client_shutdown.read().unwrap().get(&module_id).unwrap() {
                     break;
                 }
+
+                // Get next event.
+                let resp = match client
+                    .get(&format!(
+                        "http://{}/2018-06-01/runtime/invocation/next",
+                        endpoint
+                    ))
+                    .send()
+                {
+                    Ok(resp) => resp,
+                    Err(e) => {
+                        error!("Error getting next event: {}", e);
+                        break;
+                    }
+                };
+
+                // Call handler.
+
+                // Handle response or error.
             }
         });
+
+        Ok(())
     }
 
     // Stops any running Lambda runtime client.
-    fn stop_runtime_client(&self, config: CapabilityConfiguration) {
+    fn stop_runtime_client(&self, config: CapabilityConfiguration) -> Result<(), Box<dyn Error>> {
         debug!("stop_runtime_client");
 
         let module_id = &config.module;
@@ -76,7 +101,7 @@ impl AwsLambdaRuntimeProvider {
                     "Received request to stop runtime client for unknown actor {}. Ignoring",
                     module_id
                 );
-                return;
+                return Ok(());
             }
             *lock.get_mut(module_id).unwrap() = true;
         }
@@ -84,6 +109,8 @@ impl AwsLambdaRuntimeProvider {
             let mut lock = self.client_shutdown.write().unwrap();
             lock.remove(module_id).unwrap();
         }
+
+        Ok(())
     }
 }
 
@@ -109,10 +136,10 @@ impl CapabilityProvider for AwsLambdaRuntimeProvider {
 
         match op {
             OP_CONFIGURE if actor == "system" => {
-                self.start_runtime_client(CapabilityConfiguration::decode(msg)?)
+                self.start_runtime_client(CapabilityConfiguration::decode(msg)?)?
             }
             OP_REMOVE_ACTOR if actor == "system" => {
-                self.stop_runtime_client(CapabilityConfiguration::decode(msg)?)
+                self.stop_runtime_client(CapabilityConfiguration::decode(msg)?)?
             }
             _ => return Err(format!("Unsupported operation: {}", op).into()),
         }

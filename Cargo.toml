@@ -12,3 +12,4 @@ env_logger = "0.7.1"
 log = "0.4.8"
 wascc-codec = "0.4.1"
 prost = "0.6.1"
+reqwest = { version = "0.10.3", features = ["blocking"] }
