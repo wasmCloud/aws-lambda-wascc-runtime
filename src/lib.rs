@@ -22,7 +22,7 @@ impl Default for AwsLambdaRuntimeProvider {
     // Returns the default value for `AwsLambdaRuntimeProvider`.
     fn default() -> Self {
         match env_logger::try_init() {
-            Ok(_) => {},
+            Ok(_) => {}
             Err(_) => info!("Logger already intialized, skipping"),
         };
 
@@ -48,7 +48,7 @@ impl AwsLambdaRuntimeProvider {
     }
 
     // Removes an actor.
-    fn remove_actor(&self, config: CapabilityConfiguration)-> Result<Vec<u8>, Box<dyn Error>> {
+    fn remove_actor(&self, config: CapabilityConfiguration) -> Result<Vec<u8>, Box<dyn Error>> {
         debug!("remove_actor");
 
         let _config = config.values;
@@ -81,8 +81,12 @@ impl CapabilityProvider for AwsLambdaRuntimeProvider {
         info!("Handling operation `{}` from `{}`", op, actor);
 
         match op {
-            OP_CONFIGURE if actor == "system" => self.configure(CapabilityConfiguration::decode(msg)?),
-            OP_REMOVE_ACTOR if actor == "system" => self.remove_actor(CapabilityConfiguration::decode(msg)?),
+            OP_CONFIGURE if actor == "system" => {
+                self.configure(CapabilityConfiguration::decode(msg)?)
+            }
+            OP_REMOVE_ACTOR if actor == "system" => {
+                self.remove_actor(CapabilityConfiguration::decode(msg)?)
+            }
             _ => Err(format!("Unsupported operation: {}", op).into()),
         }
     }
