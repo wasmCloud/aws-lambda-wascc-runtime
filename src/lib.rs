@@ -1,3 +1,7 @@
+//
+// waSCC AWS Lambda Runtime Provider
+//
+
 #[macro_use]
 extern crate log;
 #[macro_use]
@@ -12,6 +16,8 @@ use std::collections::HashMap;
 use std::error::Error;
 use std::sync::{Arc, RwLock};
 use std::thread;
+
+mod client;
 
 const CAPABILITY_ID: &str = "awslambda:runtime";
 
@@ -61,7 +67,7 @@ impl AwsLambdaRuntimeProvider {
                 .unwrap()
                 .insert(module_id.clone(), false);
 
-            let client = reqwest::blocking::Client::new();
+            let client = client::LambdaRuntimeClient::with_endpoint(&endpoint);
 
             loop {
                 if *client_shutdown.read().unwrap().get(&module_id).unwrap() {
@@ -69,19 +75,7 @@ impl AwsLambdaRuntimeProvider {
                 }
 
                 // Get next event.
-                let resp = match client
-                    .get(&format!(
-                        "http://{}/2018-06-01/runtime/invocation/next",
-                        endpoint
-                    ))
-                    .send()
-                {
-                    Ok(resp) => resp,
-                    Err(e) => {
-                        error!("Error getting next event: {}", e);
-                        break;
-                    }
-                };
+                let resp = client.next_invocation_event();
 
                 // Call handler.
 
