@@ -105,17 +105,19 @@ impl AwsLambdaRuntimeProvider {
                 // Handle response or error.
                 match handler_resp {
                     Ok(r) => {
-                        let invocation_resp = client::LambdaInvocationResponse::new(r);
+                        let invocation_resp = client::LambdaInvocationResponse::new(r)
+                            .request_id(event.request_id().unwrap());
                         match client.send_invocation_response(invocation_resp) {
-                            Ok(_) => {},
+                            Ok(_) => {}
                             Err(err) => error!("{}", err),
                         }
                     }
                     Err(e) => {
                         error!("Guest failed to handle Lambda event: {}", e);
-                        let invocation_err = client::LambdaInvocationError::new(e);
+                        let invocation_err = client::LambdaInvocationError::new(e)
+                            .request_id(event.request_id().unwrap());
                         match client.send_invocation_error(invocation_err) {
-                            Ok(_) => {},
+                            Ok(_) => {}
                             Err(err) => error!("{}", err),
                         }
                     }
