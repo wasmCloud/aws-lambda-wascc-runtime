@@ -11,6 +11,7 @@ use codec::capabilities::{CapabilityProvider, Dispatcher, NullDispatcher};
 use codec::core::{CapabilityConfiguration, OP_CONFIGURE, OP_REMOVE_ACTOR};
 use env_logger;
 use prost::Message;
+use std::env;
 use std::collections::HashMap;
 
 use std::error::Error;
@@ -54,7 +55,7 @@ impl AwsLambdaRuntimeProvider {
 
         let client_shutdown = self.client_shutdown.clone();
         let endpoint = match config.values.get("AWS_LAMBDA_RUNTIME_API") {
-            Some(ep) => ep.clone(),
+            Some(ep) => String::from(ep),
             None => return Err("Missing configuration value: AWS_LAMBDA_RUNTIME_API".into()),
         };
         let module_id = config.module;
@@ -75,7 +76,25 @@ impl AwsLambdaRuntimeProvider {
                 }
 
                 // Get next event.
-                let resp = client.next_invocation_event();
+                let event = match client.next_invocation_event() {
+                    Err(err) => {
+                        error!("{}", err);
+                        continue;
+                    }
+                    Ok(evt) => match evt {
+                        None => continue,
+                        Some(event) => event,
+                    },
+                };
+                if event.request_id().is_none() {
+                    warn!("Missing request ID");
+                    continue;
+                }
+
+                // Set for the X-Ray SDK.
+                if let Some(trace_id) = event.trace_id() {
+                    env::set_var("_X_AMZN_TRACE_ID", trace_id);
+                }
 
                 // Call handler.
 
