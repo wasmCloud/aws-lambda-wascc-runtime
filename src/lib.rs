@@ -11,8 +11,8 @@ use codec::capabilities::{CapabilityProvider, Dispatcher, NullDispatcher};
 use codec::core::{CapabilityConfiguration, OP_CONFIGURE, OP_REMOVE_ACTOR};
 use env_logger;
 use prost::Message;
-use std::env;
 use std::collections::HashMap;
+use std::env;
 
 use std::error::Error;
 use std::sync::{Arc, RwLock};
@@ -53,7 +53,8 @@ impl AwsLambdaRuntimeProvider {
     fn start_runtime_client(&self, config: CapabilityConfiguration) -> Result<(), Box<dyn Error>> {
         debug!("start_runtime_client");
 
-        let client_shutdown = self.client_shutdown.clone();
+        let client_shutdown = Arc::clone(&self.client_shutdown);
+        let dispatcher = Arc::clone(&self.dispatcher);
         let endpoint = match config.values.get("AWS_LAMBDA_RUNTIME_API") {
             Some(ep) => String::from(ep),
             None => return Err("Missing configuration value: AWS_LAMBDA_RUNTIME_API".into()),
@@ -68,7 +69,7 @@ impl AwsLambdaRuntimeProvider {
                 .unwrap()
                 .insert(module_id.clone(), false);
 
-            let client = client::LambdaRuntimeClient::with_endpoint(&endpoint);
+            let client = client::LambdaRuntimeClient::new(&endpoint);
 
             loop {
                 if *client_shutdown.read().unwrap().get(&module_id).unwrap() {
@@ -97,8 +98,28 @@ impl AwsLambdaRuntimeProvider {
                 }
 
                 // Call handler.
-
+                let handler_resp = {
+                    let lock = dispatcher.read().unwrap();
+                    lock.dispatch(&format!("{}!HandleEvent", &module_id), event.body())
+                };
                 // Handle response or error.
+                match handler_resp {
+                    Ok(r) => {
+                        let invocation_resp = client::LambdaInvocationResponse::new(r);
+                        match client.send_invocation_response(invocation_resp) {
+                            Ok(_) => {},
+                            Err(err) => error!("{}", err),
+                        }
+                    }
+                    Err(e) => {
+                        error!("Guest failed to handle Lambda event: {}", e);
+                        let invocation_err = client::LambdaInvocationError::new(e);
+                        match client.send_invocation_error(invocation_err) {
+                            Ok(_) => {},
+                            Err(err) => error!("{}", err),
+                        }
+                    }
+                }
             }
         });
 
