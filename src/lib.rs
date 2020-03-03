@@ -209,7 +209,7 @@ impl AwsLambdaRuntimeClient {
                         .send_invocation_response(invocation_resp)
                     {
                         Ok(_) => {}
-                        Err(err) => error!("{}", err),
+                        Err(err) => error!("Unable to send invocation response: {}", err),
                     }
                 }
                 Err(e) => {
@@ -218,7 +218,7 @@ impl AwsLambdaRuntimeClient {
                         .request_id(event.request_id().unwrap());
                     match self.runtime_client.send_invocation_error(invocation_err) {
                         Ok(_) => {}
-                        Err(err) => error!("{}", err),
+                        Err(err) => error!("Unable to send invocation error: {}", err),
                     }
                 }
             }
