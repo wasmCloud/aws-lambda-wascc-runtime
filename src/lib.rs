@@ -18,7 +18,7 @@ use std::error::Error;
 use std::sync::{Arc, RwLock};
 use std::thread;
 
-mod client;
+mod lambda;
 
 const CAPABILITY_ID: &str = "awslambda:runtime";
 
@@ -34,7 +34,7 @@ pub struct AwsLambdaRuntimeProvider {
 struct AwsLambdaRuntimeClient {
     dispatcher: Arc<RwLock<Box<dyn Dispatcher>>>,
     module_id: String,
-    runtime_client: client::LambdaRuntimeClient,
+    runtime_client: lambda::RuntimeClient,
     shutdown: Arc<RwLock<HashMap<String, bool>>>,
 }
 
@@ -161,7 +161,7 @@ impl AwsLambdaRuntimeClient {
         AwsLambdaRuntimeClient {
             dispatcher,
             module_id: module_id.into(),
-            runtime_client: client::LambdaRuntimeClient::new(endpoint),
+            runtime_client: lambda::RuntimeClient::new(endpoint),
             shutdown,
         }
     }
@@ -202,8 +202,8 @@ impl AwsLambdaRuntimeClient {
             // Handle response or error.
             match handler_resp {
                 Ok(r) => {
-                    let invocation_resp = client::LambdaInvocationResponse::new(r)
-                        .request_id(event.request_id().unwrap());
+                    let invocation_resp =
+                        lambda::InvocationResponse::new(r).request_id(event.request_id().unwrap());
                     match self
                         .runtime_client
                         .send_invocation_response(invocation_resp)
@@ -214,8 +214,8 @@ impl AwsLambdaRuntimeClient {
                 }
                 Err(e) => {
                     error!("Guest failed to handle Lambda event: {}", e);
-                    let invocation_err = client::LambdaInvocationError::new(e)
-                        .request_id(event.request_id().unwrap());
+                    let invocation_err =
+                        lambda::InvocationError::new(e).request_id(event.request_id().unwrap());
                     match self.runtime_client.send_invocation_error(invocation_err) {
                         Ok(_) => {}
                         Err(err) => error!("Unable to send invocation error: {}", err),

@@ -6,41 +6,41 @@ use serde_json;
 use std::error::Error;
 
 // Represents an invocation event.
-pub struct LambdaInvocationEvent {
+pub struct InvocationEvent {
     body: Vec<u8>,
     request_id: Option<String>,
     trace_id: Option<String>,
 }
 
 // Represents an invocation response.
-pub struct LambdaInvocationResponse {
+pub struct InvocationResponse {
     body: Vec<u8>,
     request_id: Option<String>,
 }
 
 // Represents an invocation error.
-pub struct LambdaInvocationError {
+pub struct InvocationError {
     error: Box<dyn Error>,
     request_id: Option<String>,
 }
 
 // Represents an AWS Lambda runtime HTTP client.
-pub struct LambdaRuntimeClient {
+pub struct RuntimeClient {
     endpoint: String,
     http_client: reqwest::blocking::Client,
 }
 
-impl LambdaRuntimeClient {
-    // Creates a new `LambdaRuntimeClient` with the specified AWS Lambda runtime API endpoint.
+impl RuntimeClient {
+    // Creates a new `RuntimeClient` with the specified AWS Lambda runtime API endpoint.
     pub fn new(endpoint: &str) -> Self {
-        LambdaRuntimeClient {
+        RuntimeClient {
             endpoint: endpoint.into(),
             http_client: reqwest::blocking::Client::new(),
         }
     }
 
     // Returns the next AWS Lambda invocation event.
-    pub fn next_invocation_event(&self) -> Result<Option<LambdaInvocationEvent>, Box<dyn Error>> {
+    pub fn next_invocation_event(&self) -> Result<Option<InvocationEvent>, Box<dyn Error>> {
         // https://docs.aws.amazon.com/lambda/latest/dg/runtimes-api.html#runtimes-api-next
         let url = format!(
             "http://{}/2018-06-01/runtime/invocation/next",
@@ -60,7 +60,7 @@ impl LambdaRuntimeClient {
 
         let mut buf: Vec<u8> = vec![];
         resp.copy_to(&mut buf)?;
-        let mut event = LambdaInvocationEvent::new(buf);
+        let mut event = InvocationEvent::new(buf);
         if let Some(request_id) = resp.headers().get("Lambda-Runtime-Aws-Request-Id") {
             event.request_id = Some(request_id.to_str()?.into());
         }
@@ -72,10 +72,7 @@ impl LambdaRuntimeClient {
     }
 
     // Sends an invocation error to the AWS Lambda runtime.
-    pub fn send_invocation_error(
-        &self,
-        error: LambdaInvocationError,
-    ) -> Result<(), Box<dyn Error>> {
+    pub fn send_invocation_error(&self, error: InvocationError) -> Result<(), Box<dyn Error>> {
         if error.request_id.is_none() {
             warn!("No request ID specified. Unable to send invocation error");
             return Ok(());
@@ -106,10 +103,7 @@ impl LambdaRuntimeClient {
     }
 
     // Sends an invocation response to the AWS Lambda runtime.
-    pub fn send_invocation_response(
-        &self,
-        resp: LambdaInvocationResponse,
-    ) -> Result<(), Box<dyn Error>> {
+    pub fn send_invocation_response(&self, resp: InvocationResponse) -> Result<(), Box<dyn Error>> {
         if resp.request_id.is_none() {
             warn!("No request ID specified. Unable to send invocation response");
             return Ok(());
@@ -134,10 +128,10 @@ impl LambdaRuntimeClient {
     }
 }
 
-impl LambdaInvocationEvent {
-    // Creates a new `LambdaInvocationEvent` with the specified body.
+impl InvocationEvent {
+    // Creates a new `InvocationEvent` with the specified body.
     pub fn new(body: Vec<u8>) -> Self {
-        LambdaInvocationEvent {
+        InvocationEvent {
             body: body,
             request_id: None,
             trace_id: None,
@@ -160,36 +154,36 @@ impl LambdaInvocationEvent {
     }
 }
 
-impl LambdaInvocationResponse {
-    // Creates a new `LambdaInvocationResponse` with the specified body.
+impl InvocationResponse {
+    // Creates a new `InvocationResponse` with the specified body.
     pub fn new(body: Vec<u8>) -> Self {
-        LambdaInvocationResponse {
+        InvocationResponse {
             body: body,
             request_id: None,
         }
     }
 
-    // Creates a new `LambdaInvocationResponse` with the specified request ID.
+    // Creates a new `InvocationResponse` with the specified request ID.
     pub fn request_id(self, request_id: &str) -> Self {
-        LambdaInvocationResponse {
+        InvocationResponse {
             body: self.body,
             request_id: Some(request_id.into()),
         }
     }
 }
 
-impl LambdaInvocationError {
-    // Creates a new `LambdaInvocationError` with the specified error.
+impl InvocationError {
+    // Creates a new `InvocationError` with the specified error.
     pub fn new(error: Box<dyn Error>) -> Self {
-        LambdaInvocationError {
+        InvocationError {
             error: error,
             request_id: None,
         }
     }
 
-    // Creates a new `LambdaInvocationError` with the specified request ID.
+    // Creates a new `InvocationError` with the specified request ID.
     pub fn request_id(self, request_id: &str) -> Self {
-        LambdaInvocationError {
+        InvocationError {
             error: self.error,
             request_id: Some(request_id.into()),
         }
