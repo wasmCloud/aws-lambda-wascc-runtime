@@ -74,8 +74,7 @@ impl RuntimeClient {
     // Sends an invocation error to the AWS Lambda runtime.
     pub fn send_invocation_error(&self, error: InvocationError) -> Result<(), Box<dyn Error>> {
         if error.request_id.is_none() {
-            warn!("No request ID specified. Unable to send invocation error");
-            return Ok(());
+            return Err("No request ID specified".into());
         }
 
         // https://docs.aws.amazon.com/lambda/latest/dg/runtimes-api.html#runtimes-api-invokeerror
@@ -105,8 +104,7 @@ impl RuntimeClient {
     // Sends an invocation response to the AWS Lambda runtime.
     pub fn send_invocation_response(&self, resp: InvocationResponse) -> Result<(), Box<dyn Error>> {
         if resp.request_id.is_none() {
-            warn!("No request ID specified. Unable to send invocation response");
-            return Ok(());
+            return Err("No request ID specified".into());
         }
 
         // https://docs.aws.amazon.com/lambda/latest/dg/runtimes-api.html#runtimes-api-response
