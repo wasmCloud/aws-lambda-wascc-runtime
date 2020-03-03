@@ -71,6 +71,7 @@ impl LambdaRuntimeClient {
         Ok(Some(event))
     }
 
+    // Sends an invocation error to the AWS Lambda runtime.
     pub fn send_invocation_error(
         &self,
         error: LambdaInvocationError,
@@ -104,10 +105,35 @@ impl LambdaRuntimeClient {
         Ok(())
     }
 
+    // Sends an invocation response to the AWS Lambda runtime.
     pub fn send_invocation_response(
         &self,
         resp: LambdaInvocationResponse,
     ) -> Result<(), Box<dyn Error>> {
+        if resp.request_id.is_none() {
+            warn!("No request ID specified. Unable to send invocation response");
+            return Ok(());
+        }
+
+        // https://docs.aws.amazon.com/lambda/latest/dg/runtimes-api.html#runtimes-api-response
+        let url = format!(
+            "http://{}/2018-06-01/runtime/invocation/{}/response",
+            self.endpoint,
+            resp.request_id.unwrap()
+        );
+        let resp = self
+            .http_client
+            .post(&url)
+            .body(resp.body)
+            .send()?;
+        let status = resp.status();
+        info!(
+            "POST {} {} {}",
+            url,
+            status.as_str(),
+            status.canonical_reason().unwrap()
+        );
+
         Ok(())
     }
 }
