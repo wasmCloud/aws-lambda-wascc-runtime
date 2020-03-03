@@ -121,11 +121,7 @@ impl LambdaRuntimeClient {
             self.endpoint,
             resp.request_id.unwrap()
         );
-        let resp = self
-            .http_client
-            .post(&url)
-            .body(resp.body)
-            .send()?;
+        let resp = self.http_client.post(&url).body(resp.body).send()?;
         let status = resp.status();
         info!(
             "POST {} {} {}",

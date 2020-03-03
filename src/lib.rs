@@ -24,9 +24,18 @@ const CAPABILITY_ID: &str = "awslambda:runtime";
 
 capability_provider!(AwsLambdaRuntimeProvider, AwsLambdaRuntimeProvider::new);
 
+// Represents a waSCC AWS Lambda runtime provider.
 pub struct AwsLambdaRuntimeProvider {
     client_shutdown: Arc<RwLock<HashMap<String, bool>>>,
     dispatcher: Arc<RwLock<Box<dyn Dispatcher>>>,
+}
+
+// Represents an AWS Lambda runtime client.
+struct AwsLambdaRuntimeClient {
+    dispatcher: Arc<RwLock<Box<dyn Dispatcher>>>,
+    module_id: String,
+    runtime_client: client::LambdaRuntimeClient,
+    shutdown: Arc<RwLock<HashMap<String, bool>>>,
 }
 
 impl Default for AwsLambdaRuntimeProvider {
@@ -69,60 +78,9 @@ impl AwsLambdaRuntimeProvider {
                 .unwrap()
                 .insert(module_id.clone(), false);
 
-            let client = client::LambdaRuntimeClient::new(&endpoint);
-
-            loop {
-                if *client_shutdown.read().unwrap().get(&module_id).unwrap() {
-                    break;
-                }
-
-                // Get next event.
-                let event = match client.next_invocation_event() {
-                    Err(err) => {
-                        error!("{}", err);
-                        continue;
-                    }
-                    Ok(evt) => match evt {
-                        None => continue,
-                        Some(event) => event,
-                    },
-                };
-                if event.request_id().is_none() {
-                    warn!("Missing request ID");
-                    continue;
-                }
-
-                // Set for the X-Ray SDK.
-                if let Some(trace_id) = event.trace_id() {
-                    env::set_var("_X_AMZN_TRACE_ID", trace_id);
-                }
-
-                // Call handler.
-                let handler_resp = {
-                    let lock = dispatcher.read().unwrap();
-                    lock.dispatch(&format!("{}!HandleEvent", &module_id), event.body())
-                };
-                // Handle response or error.
-                match handler_resp {
-                    Ok(r) => {
-                        let invocation_resp = client::LambdaInvocationResponse::new(r)
-                            .request_id(event.request_id().unwrap());
-                        match client.send_invocation_response(invocation_resp) {
-                            Ok(_) => {}
-                            Err(err) => error!("{}", err),
-                        }
-                    }
-                    Err(e) => {
-                        error!("Guest failed to handle Lambda event: {}", e);
-                        let invocation_err = client::LambdaInvocationError::new(e)
-                            .request_id(event.request_id().unwrap());
-                        match client.send_invocation_error(invocation_err) {
-                            Ok(_) => {}
-                            Err(err) => error!("{}", err),
-                        }
-                    }
-                }
-            }
+            let client =
+                AwsLambdaRuntimeClient::new(&endpoint, &module_id, dispatcher, client_shutdown);
+            client.run_until_shutdown();
         });
 
         Ok(())
@@ -189,5 +147,86 @@ impl CapabilityProvider for AwsLambdaRuntimeProvider {
     // Returns the human-readable, friendly name of this capability provider.
     fn name(&self) -> &'static str {
         "waSCC AWS Lambda runtime provider"
+    }
+}
+
+impl AwsLambdaRuntimeClient {
+    // Creates a new `AwsLambdaRuntimeClient`.
+    fn new(
+        endpoint: &str,
+        module_id: &str,
+        dispatcher: Arc<RwLock<Box<dyn Dispatcher>>>,
+        shutdown: Arc<RwLock<HashMap<String, bool>>>,
+    ) -> Self {
+        AwsLambdaRuntimeClient {
+            dispatcher,
+            module_id: module_id.into(),
+            runtime_client: client::LambdaRuntimeClient::new(endpoint),
+            shutdown,
+        }
+    }
+
+    // Runs until shutdown.
+    fn run_until_shutdown(&self) {
+        loop {
+            if self.shutdown() {
+                break;
+            }
+
+            // Get next event.
+            let event = match self.runtime_client.next_invocation_event() {
+                Err(err) => {
+                    error!("{}", err);
+                    continue;
+                }
+                Ok(evt) => match evt {
+                    None => continue,
+                    Some(event) => event,
+                },
+            };
+            if event.request_id().is_none() {
+                warn!("Missing request ID");
+                continue;
+            }
+
+            // Set for the X-Ray SDK.
+            if let Some(trace_id) = event.trace_id() {
+                env::set_var("_X_AMZN_TRACE_ID", trace_id);
+            }
+
+            // Call handler.
+            let handler_resp = {
+                let lock = self.dispatcher.read().unwrap();
+                lock.dispatch(&format!("{}!HandleEvent", &self.module_id), event.body())
+            };
+            // Handle response or error.
+            match handler_resp {
+                Ok(r) => {
+                    let invocation_resp = client::LambdaInvocationResponse::new(r)
+                        .request_id(event.request_id().unwrap());
+                    match self
+                        .runtime_client
+                        .send_invocation_response(invocation_resp)
+                    {
+                        Ok(_) => {}
+                        Err(err) => error!("{}", err),
+                    }
+                }
+                Err(e) => {
+                    error!("Guest failed to handle Lambda event: {}", e);
+                    let invocation_err = client::LambdaInvocationError::new(e)
+                        .request_id(event.request_id().unwrap());
+                    match self.runtime_client.send_invocation_error(invocation_err) {
+                        Ok(_) => {}
+                        Err(err) => error!("{}", err),
+                    }
+                }
+            }
+        }
+    }
+
+    // Returns whether the shutdown flag is set.
+    fn shutdown(&self) -> bool {
+        *self.shutdown.read().unwrap().get(&self.module_id).unwrap()
     }
 }
