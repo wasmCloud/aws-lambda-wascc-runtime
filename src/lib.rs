@@ -1,7 +1,7 @@
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn it_works() {
-        assert_eq!(2 + 2, 4);
-    }
+//
+// waSCC AWS Lambda Runtime Codec
+//
+
+pub mod aws_lambda_runtime {
+    pub const OP_HANDLE_EVENT: &str = "HandleEvent";
 }

@@ -1,0 +1,15 @@
+//
+// waSCC AWS Lambda Runtime Codec
+//
+
+syntax = "proto3";
+
+package aws_lambda_runtime;
+
+message Event {
+  bytes body = 1; // Body of the event.
+}
+
+message Response {
+  bytes body = 1; // Body of the response.
+}
