@@ -7,10 +7,10 @@ extern crate log;
 #[macro_use]
 extern crate wascc_codec as codec;
 
+use codec::{deserialize, serialize};
 use codec::capabilities::{CapabilityProvider, Dispatcher, NullDispatcher};
 use codec::core::{CapabilityConfiguration, OP_CONFIGURE, OP_REMOVE_ACTOR};
 use env_logger;
-use prost::Message;
 use std::collections::HashMap;
 use std::env;
 
@@ -133,10 +133,10 @@ impl CapabilityProvider for AwsLambdaRuntimeProvider {
 
         match op {
             OP_CONFIGURE if actor == "system" => {
-                self.start_runtime_client(CapabilityConfiguration::decode(msg)?)?
+                self.start_runtime_client(deserialize(msg)?)?
             }
             OP_REMOVE_ACTOR if actor == "system" => {
-                self.stop_runtime_client(CapabilityConfiguration::decode(msg)?)?
+                self.stop_runtime_client(deserialize(msg)?)?
             }
             _ => return Err(format!("Unsupported operation: {}", op).into()),
         }
