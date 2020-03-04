@@ -1,9 +1,15 @@
+//
+// waSCC AWS Lambda Runtime
+//
+
 use env_logger;
-use lambda_runtime_core::{lambda, Context, HandlerError};
 use log::info;
 use std::collections::HashMap;
-use std::env;
 use std::error::Error;
+use wascc_host::{host, HostManifest, NativeCapability};
+
+const AWS_LAMBDA_RUNTIME_PROVIDER_FILE: &str = "libwascc_httpsrv.so";
+const MANIFEST_FILE: &str = "manifest.yaml";
 
 // Entry point.
 fn main() -> Result<(), Box<dyn Error>> {
@@ -16,7 +22,35 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut config = HashMap::new();
     load_function_settings(&mut config)?;
 
-    lambda!(wascc_handler);
+    info!(
+        "{}",
+        format!(
+            "Loading waSCC host manifest {:?}/{}",
+            std::env::current_dir()?,
+            MANIFEST_FILE
+        )
+    );
+    let manifest = HostManifest::from_yaml(MANIFEST_FILE)?;
+    host::apply_manifest(manifest)?;
+
+    info!(
+        "{}",
+        format!(
+            "Loading native capability provider {:?}/{}",
+            std::env::current_dir()?,
+            AWS_LAMBDA_RUNTIME_PROVIDER_FILE
+        )
+    );
+    host::add_native_capability(NativeCapability::from_file(
+        AWS_LAMBDA_RUNTIME_PROVIDER_FILE,
+    )?)?;
+    host::configure(
+        "MB4OLDIC3TCZ4Q4TGGOVAZC43VXFE2JQVRAXQMQFXUCREOOFEKOKZTY2",
+        "wascc:http_server",
+        config,
+    )?;
+
+    std::thread::park();
 
     Ok(())
 }
@@ -35,14 +69,8 @@ fn load_function_settings(config: &mut HashMap<String, String>) -> Result<(), Bo
     ]
     .iter()
     {
-        config.insert(v.to_string(), env::var(v)?);
+        config.insert(v.to_string(), std::env::var(v)?);
     }
 
     Ok(())
-}
-
-fn wascc_handler(_data: Vec<u8>, _ctx: Context) -> Result<Vec<u8>, HandlerError> {
-    info!("wascc_handler entered");
-
-    Ok("all good".as_bytes().to_vec())
 }
