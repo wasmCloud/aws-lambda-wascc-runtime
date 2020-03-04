@@ -1,0 +1,6 @@
+[workspace]
+members = [
+    "codec",
+    "provider",
+    "runtime",
+]
