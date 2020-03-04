@@ -7,6 +7,8 @@ extern crate log;
 #[macro_use]
 extern crate wascc_codec as codec;
 
+extern crate aws_lambda_runtime_codec as runtime_codec;
+
 use codec::{deserialize, serialize};
 use codec::capabilities::{CapabilityProvider, Dispatcher, NullDispatcher};
 use codec::core::{CapabilityConfiguration, OP_CONFIGURE, OP_REMOVE_ACTOR};
@@ -196,14 +198,16 @@ impl AwsLambdaRuntimeClient {
 
             // Call handler.
             let handler_resp = {
+                let buf = serialize(event.body()).unwrap();
                 let lock = self.dispatcher.read().unwrap();
-                lock.dispatch(&format!("{}!HandleEvent", &self.module_id), event.body())
+                lock.dispatch(&format!("{}!HandleEvent", &self.module_id), &buf)
             };
             // Handle response or error.
             match handler_resp {
                 Ok(r) => {
+                    let r = deserialize::<runtime_codec::lambda::Response>(r.as_slice()).unwrap();
                     let invocation_resp =
-                        lambda::InvocationResponse::new(r).request_id(event.request_id().unwrap());
+                        lambda::InvocationResponse::new(r.body).request_id(event.request_id().unwrap());
                     match self
                         .runtime_client
                         .send_invocation_response(invocation_resp)
