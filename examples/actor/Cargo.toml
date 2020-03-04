@@ -1,0 +1,17 @@
+[package]
+name = "wascc-actor-hello-lambda"
+version = "0.0.1"
+authors = ["Kit Ewbank <Christopher.Ewbank@capitalone.com>"]
+edition = "2018"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+wascc-actor = "0.4.0"
+
+[profile.release]
+# Optimize for small code size
+opt-level = "s"
+
+[workspace]
