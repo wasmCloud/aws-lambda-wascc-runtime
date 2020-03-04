@@ -5,7 +5,5 @@ authors = ["Kit Ewbank <Christopher.Ewbank@capitalone.com>"]
 edition = "2018"
 
 [dependencies]
-prost = "0.6.1"
-
-[build-dependencies]
-prost-build = "0.6.1"
+serde = "1.0.104"
+serde_derive = "1.0.104"

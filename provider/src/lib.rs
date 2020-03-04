@@ -7,10 +7,12 @@ extern crate log;
 #[macro_use]
 extern crate wascc_codec as codec;
 
+extern crate aws_lambda_runtime_codec as runtime_codec;
+
 use codec::capabilities::{CapabilityProvider, Dispatcher, NullDispatcher};
 use codec::core::{CapabilityConfiguration, OP_CONFIGURE, OP_REMOVE_ACTOR};
+use codec::{deserialize, serialize};
 use env_logger;
-use prost::Message;
 use std::collections::HashMap;
 use std::env;
 
@@ -132,12 +134,8 @@ impl CapabilityProvider for AwsLambdaRuntimeProvider {
         info!("Handling operation `{}` from `{}`", op, actor);
 
         match op {
-            OP_CONFIGURE if actor == "system" => {
-                self.start_runtime_client(CapabilityConfiguration::decode(msg)?)?
-            }
-            OP_REMOVE_ACTOR if actor == "system" => {
-                self.stop_runtime_client(CapabilityConfiguration::decode(msg)?)?
-            }
+            OP_CONFIGURE if actor == "system" => self.start_runtime_client(deserialize(msg)?)?,
+            OP_REMOVE_ACTOR if actor == "system" => self.stop_runtime_client(deserialize(msg)?)?,
             _ => return Err(format!("Unsupported operation: {}", op).into()),
         }
 
@@ -196,14 +194,16 @@ impl AwsLambdaRuntimeClient {
 
             // Call handler.
             let handler_resp = {
+                let buf = serialize(event.body()).unwrap();
                 let lock = self.dispatcher.read().unwrap();
-                lock.dispatch(&format!("{}!HandleEvent", &self.module_id), event.body())
+                lock.dispatch(&format!("{}!HandleEvent", &self.module_id), &buf)
             };
             // Handle response or error.
             match handler_resp {
                 Ok(r) => {
-                    let invocation_resp =
-                        lambda::InvocationResponse::new(r).request_id(event.request_id().unwrap());
+                    let r = deserialize::<runtime_codec::lambda::Response>(r.as_slice()).unwrap();
+                    let invocation_resp = lambda::InvocationResponse::new(r.body)
+                        .request_id(event.request_id().unwrap());
                     match self
                         .runtime_client
                         .send_invocation_response(invocation_resp)
