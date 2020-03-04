@@ -1,0 +1,11 @@
+[package]
+name = "aws-lambda-runtime-codec"
+version = "0.1.0"
+authors = ["Kit Ewbank <Christopher.Ewbank@capitalone.com>"]
+edition = "2018"
+
+[dependencies]
+prost = "0.6.1"
+
+[build-dependencies]
+prost-build = "0.6.1"
