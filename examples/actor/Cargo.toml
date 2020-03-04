@@ -9,6 +9,7 @@ crate-type = ["cdylib"]
 
 [dependencies]
 wascc-actor = "0.4.0"
+aws-lambda-runtime-codec = { path = "../../codec", version = "^0.1" }
 
 [profile.release]
 # Optimize for small code size

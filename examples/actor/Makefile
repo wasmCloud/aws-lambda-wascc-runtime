@@ -13,8 +13,8 @@ bench:
 	@$(CARGO) bench
 
 build:
-	@$(CARGO) build
-	wascap sign $(DEBUG)/wascc_actor_hello_http.wasm $(DEBUG)/wascc_actor_hello_http_signed.wasm -i $(KEYDIR)/account.nk -u $(KEYDIR)/module.nk -s -n wascc_actor_hello_http
+	@$(CARGO) build --target wasm32-unknown-unknown
+	wascap sign $(DEBUG)/wascc_actor_hello_lambda.wasm $(DEBUG)/wascc_actor_hello_lambda_signed.wasm -i $(KEYDIR)/account.nk -u $(KEYDIR)/module.nk -s -n wascc_actor_hello_lambda
 
 check:
 	@$(CARGO) check
@@ -33,7 +33,7 @@ update:
 
 release:
 	@$(CARGO) build --release
-	wascap sign $(RELEASE)/wascc_actor_hello_http.wasm $(RELEASE)/wascc_actor_hello_http_s.wasm -i $(KEYDIR)/account.nk -u $(KEYDIR)/module.nk -s -n wascc_actor_hello_http
+	wascap sign $(RELEASE)/wascc_actor_hello_lambda.wasm $(RELEASE)/wascc_actor_hello_lambda_signed.wasm -i $(KEYDIR)/account.nk -u $(KEYDIR)/module.nk -s -n wascc_actor_hello_lambda
 
 keys: keys-account
 keys: keys-module
