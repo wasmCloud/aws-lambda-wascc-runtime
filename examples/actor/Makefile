@@ -32,7 +32,7 @@ update:
 	@$(CARGO) update
 
 release:
-	@$(CARGO) build --release
+	@$(CARGO) build --release --target wasm32-unknown-unknown
 	wascap sign $(RELEASE)/wascc_actor_hello_lambda.wasm $(RELEASE)/wascc_actor_hello_lambda_signed.wasm -i $(KEYDIR)/account.nk -u $(KEYDIR)/module.nk -s -n wascc_actor_hello_lambda
 
 keys: keys-account
