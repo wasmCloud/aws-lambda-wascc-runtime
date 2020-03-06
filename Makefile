@@ -1,7 +1,8 @@
 COLOR ?= always # Valid COLOR options: {always, auto, never}
 CARGO = cargo --color $(COLOR)
+MUSLRUST = clux/muslrust:1.41.1-stable
 
-.PHONY: all build check clean doc release test update
+.PHONY: all build check clean doc pull release test update
 
 all: build
 
@@ -17,11 +18,16 @@ clean:
 doc:
 	@$(CARGO) doc
 
+pull:
+	docker pull $(MUSLRUST)
+
+# release:
+# 	@$(CARGO) build --release
+release: pull
+	docker run --volume $(PWD):/volume --rm --tty $(MUSLRUST) ln -s "/usr/bin/g++" "/usr/bin/musl-g++" && cargo build --release
+
 test: build
 	@$(CARGO) test
 
 update:
 	@$(CARGO) update
-
-release:
-	@$(CARGO) build --release
