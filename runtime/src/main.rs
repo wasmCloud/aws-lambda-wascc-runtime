@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use std::error::Error;
 use wascc_host::{host, HostManifest, NativeCapability};
 
-const AWS_LAMBDA_RUNTIME_PROVIDER_FILE: &str = "libwascc_httpsrv.so";
+const AWS_LAMBDA_RUNTIME_PROVIDER_FILE: &str = "libaws_lambda_runtime_provider.so";
 const MANIFEST_FILE: &str = "manifest.yaml";
 
 // Entry point.
