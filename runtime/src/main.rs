@@ -6,9 +6,8 @@ use env_logger;
 use log::info;
 use std::collections::HashMap;
 use std::error::Error;
-use wascc_host::{host, HostManifest, NativeCapability};
+use wascc_host::{host, HostManifest};
 
-const AWS_LAMBDA_RUNTIME_PROVIDER_FILE: &str = "libaws_lambda_runtime_provider.so";
 const MANIFEST_FILE: &str = "manifest.yaml";
 
 // Entry point.
@@ -33,20 +32,12 @@ fn main() -> Result<(), Box<dyn Error>> {
     let manifest = HostManifest::from_yaml(MANIFEST_FILE)?;
     host::apply_manifest(manifest)?;
 
-    info!(
-        "{}",
-        format!(
-            "Loading native capability provider {:?}/{}",
-            std::env::current_dir()?,
-            AWS_LAMBDA_RUNTIME_PROVIDER_FILE
-        )
-    );
-    host::add_native_capability(NativeCapability::from_file(
-        AWS_LAMBDA_RUNTIME_PROVIDER_FILE,
-    )?)?;
+    // TODO
+    // TODO When applying the manifest, expand environment variables.
+    // TODO
     host::configure(
-        "MB4OLDIC3TCZ4Q4TGGOVAZC43VXFE2JQVRAXQMQFXUCREOOFEKOKZTY2",
-        "wascc:http_server",
+        "MBN36NJGPJMD3ECFRX2UZOFXDOCBBU3JWRILAOBKRN7SURHYBRKCADIT",
+        "awslambda:runtime",
         config,
     )?;
 
