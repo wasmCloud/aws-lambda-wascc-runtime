@@ -1,13 +1,16 @@
 COLOR ?= always # Valid COLOR options: {always, auto, never}
 CARGO = cargo --color $(COLOR)
-MUSLRUST = clux/muslrust:1.41.1-stable
+BUILDER = rust:1.41.1-amazonlinux2018.03.0.20191219.0
 
-.PHONY: all build check clean doc pull release test update
+.PHONY: all build builder-image check clean doc release test update
 
 all: build
 
 build:
-	@$(CARGO) build
+	@docker run --volume $(PWD):/volume --rm --tty $(BUILDER) cargo build
+
+builder-image:
+	docker build --file Dockerfile --tag rust:1.41.1-amazonlinux .
 
 check:
 	@$(CARGO) check
@@ -18,13 +21,8 @@ clean:
 doc:
 	@$(CARGO) doc
 
-pull:
-	docker pull $(MUSLRUST)
-
-# release:
-# 	@$(CARGO) build --release
-release: pull
-	docker run --volume $(PWD):/volume --rm --tty $(MUSLRUST) ln -s "/usr/bin/g++" "/usr/bin/musl-g++" && cargo build --release
+release:
+	@docker run --volume $(PWD):/volume --rm --tty $(BUILDER) cargo build --release
 
 test: build
 	@$(CARGO) test
