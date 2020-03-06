@@ -62,7 +62,7 @@ impl AwsLambdaRuntimeProvider {
 
     // Starts the Lambda runtime client.
     fn start_runtime_client(&self, config: CapabilityConfiguration) -> Result<(), Box<dyn Error>> {
-        debug!("start_runtime_client");
+        info!("awslambda:runtime start_runtime_client");
 
         let client_shutdown = Arc::clone(&self.client_shutdown);
         let dispatcher = Arc::clone(&self.dispatcher);
@@ -90,7 +90,7 @@ impl AwsLambdaRuntimeProvider {
 
     // Stops any running Lambda runtime client.
     fn stop_runtime_client(&self, config: CapabilityConfiguration) -> Result<(), Box<dyn Error>> {
-        debug!("stop_runtime_client");
+        info!("awslambda:runtime stop_runtime_client");
 
         let module_id = &config.module;
         {
@@ -121,7 +121,7 @@ impl CapabilityProvider for AwsLambdaRuntimeProvider {
 
     // Called when the host runtime is ready and has configured a dispatcher.
     fn configure_dispatch(&self, dispatcher: Box<dyn Dispatcher>) -> Result<(), Box<dyn Error>> {
-        info!("Dispatcher received");
+        info!("awslambda:runtime configure_dispatch");
 
         let mut lock = self.dispatcher.write().unwrap();
         *lock = dispatcher;
@@ -131,7 +131,7 @@ impl CapabilityProvider for AwsLambdaRuntimeProvider {
 
     // Called by the host runtime when an actor is requesting a command be executed.
     fn handle_call(&self, actor: &str, op: &str, msg: &[u8]) -> Result<Vec<u8>, Box<dyn Error>> {
-        info!("Handling operation `{}` from `{}`", op, actor);
+        info!("awslambda:runtime handle_call `{}` from `{}`", op, actor);
 
         match op {
             OP_CONFIGURE if actor == "system" => self.start_runtime_client(deserialize(msg)?)?,
@@ -172,6 +172,7 @@ impl AwsLambdaRuntimeClient {
             }
 
             // Get next event.
+            debug!("AwsLambdaRuntimeClient get next event");
             let event = match self.runtime_client.next_invocation_event() {
                 Err(err) => {
                     error!("{}", err);
@@ -193,6 +194,7 @@ impl AwsLambdaRuntimeClient {
             }
 
             // Call handler.
+            debug!("AwsLambdaRuntimeClient call handler");
             let handler_resp = {
                 let buf = serialize(event.body()).unwrap();
                 let lock = self.dispatcher.read().unwrap();
@@ -204,6 +206,7 @@ impl AwsLambdaRuntimeClient {
                     let r = deserialize::<runtime_codec::lambda::Response>(r.as_slice()).unwrap();
                     let invocation_resp = lambda::InvocationResponse::new(r.body)
                         .request_id(event.request_id().unwrap());
+                    debug!("AwsLambdaRuntimeClient send response");
                     match self
                         .runtime_client
                         .send_invocation_response(invocation_resp)
@@ -216,6 +219,7 @@ impl AwsLambdaRuntimeClient {
                     error!("Guest failed to handle Lambda event: {}", e);
                     let invocation_err =
                         lambda::InvocationError::new(e).request_id(event.request_id().unwrap());
+                    debug!("AwsLambdaRuntimeClient send error");
                     match self.runtime_client.send_invocation_error(invocation_err) {
                         Ok(_) => {}
                         Err(err) => error!("Unable to send invocation error: {}", err),

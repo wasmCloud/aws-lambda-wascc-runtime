@@ -41,6 +41,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         config,
     )?;
 
+    info!("Main thread park");
     std::thread::park();
 
     Ok(())
