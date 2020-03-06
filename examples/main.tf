@@ -34,11 +34,12 @@ resource "aws_lambda_function" "example" {
   handler          = "doesnt.matter"
   runtime          = "provided"
   memory_size      = 256
+  timeout          = 90
 
   environment {
     variables = {
       RUST_BACKTRACE = "1"
-      RUST_LOG       = "debug"
+      RUST_LOG       = "info,cranelift_wasm=warn"
     }
   }
 }
