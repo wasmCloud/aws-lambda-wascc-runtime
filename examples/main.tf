@@ -12,10 +12,6 @@ provider "aws" {
   region = "us-west-2"
 }
 
-provider "archive" {
-  version = ">= 1.3.0"
-}
-
 //
 // Data sources for current AWS account ID, partition and region.
 //
@@ -30,20 +26,9 @@ data "aws_region" "current" {}
 // Lambda resources.
 //
 
-data "archive_file" "lambda_zip" {
-  type        = "zip"
-  source_file = "bootstrap"
-  output_path = "${path.module}/app.zip"
-
-  # source {
-  #   content  = ""
-  #   filename = "bootstrap"
-  # }
-}
-
 resource "aws_lambda_function" "example" {
-  filename         = data.archive_file.lambda_zip.output_path
-  source_code_hash = data.archive_file.lambda_zip.output_base64sha256
+  filename         = "${path.module}/app.zip"
+  source_code_hash = base64sha256("${path.module}/app.zip")
   function_name    = "waSCC-example"
   role             = aws_iam_role.example.arn
   handler          = "doesnt.matter"

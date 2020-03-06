@@ -1,0 +1,7 @@
+---
+actors:
+  - wascc_actor_hello_lambda_signed.wasm
+
+capabilities:
+  - libaws_lambda_runtime_provider.so
+
