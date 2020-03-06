@@ -15,3 +15,11 @@ pub struct Event {
 pub struct Response {
     pub body: Vec<u8>,
 }
+
+impl Response {
+    pub fn empty() -> Response {
+        Response {
+            body: vec![],
+        }
+    }
+}

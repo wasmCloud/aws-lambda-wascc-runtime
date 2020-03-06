@@ -21,5 +21,5 @@ fn handle_event(
 ) -> ReceiveResult {
     ctx.log("Actor handle event");
 
-    Ok(vec![])
+    Ok(serialize(runtime_codec::lambda::Response::empty())?)
 }
