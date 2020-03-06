@@ -6,9 +6,7 @@ use env_logger;
 use log::info;
 use std::collections::HashMap;
 use std::error::Error;
-use wascc_host::{host, HostManifest};
-
-const MANIFEST_FILE: &str = "manifest.yaml";
+use wascc_host::{host, Actor, NativeCapability};
 
 // Entry point.
 fn main() -> Result<(), Box<dyn Error>> {
@@ -21,16 +19,14 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut config = HashMap::new();
     load_function_settings(&mut config)?;
 
-    info!(
-        "{}",
-        format!(
-            "Loading waSCC host manifest {:?}/{}",
-            std::env::current_dir()?,
-            MANIFEST_FILE
-        )
-    );
-    let manifest = HostManifest::from_yaml(MANIFEST_FILE)?;
-    host::apply_manifest(manifest)?;
+    if let Some(cwd) = std::env::current_dir()?.to_str() {
+        info!("Loading actor and capabiity provider from {}", cwd);
+    }
+
+    host::add_actor(Actor::from_file("wascc_actor_hello_lambda_signed.wasm")?)?;
+    host::add_native_capability(NativeCapability::from_file(
+        "libaws_lambda_runtime_provider.so",
+    )?)?;
 
     // TODO
     // TODO When applying the manifest, expand environment variables.
