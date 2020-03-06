@@ -11,5 +11,5 @@ This workspace includes multiple crates:
 ## Build
 
 ```console
-make
+make release
 ```
