@@ -2,6 +2,8 @@
 // waSCC AWS Lambda Runtime Codec
 //
 
+use serde_json;
+
 pub const OP_HANDLE_EVENT: &str = "HandleEvent";
 
 // Describes an event received from AWS Lambda.
@@ -21,5 +23,11 @@ impl Response {
         Response {
             body: vec![],
         }
+    }
+
+    pub fn json<T>(v: &T) -> Result<Response, Box<dyn std::error::Error>> where T: serde::ser::Serialize + ?Sized {
+        Ok(Response {
+            body: serde_json::to_vec(v)?,
+        })
     }
 }
