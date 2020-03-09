@@ -5,3 +5,16 @@ actors:
 capabilities:
   - libaws_lambda_runtime_provider.so
 
+config:
+  - actor: "MBN36NJGPJMD3ECFRX2UZOFXDOCBBU3JWRILAOBKRN7SURHYBRKCADIT"
+    capability: "awslambda:runtime"
+    # These environment variables are set by the Lambda machinery.
+    # https://docs.aws.amazon.com/lambda/latest/dg/configuration-envvars.html
+    values:
+      AWS_LAMBDA_FUNCTION_NAME: "${AWS_LAMBDA_FUNCTION_NAME}"
+      AWS_LAMBDA_FUNCTION_VERSION: "${AWS_LAMBDA_FUNCTION_VERSION}"
+      AWS_LAMBDA_LOG_GROUP_NAME: "${AWS_LAMBDA_LOG_GROUP_NAME}"
+      AWS_LAMBDA_LOG_STREAM_NAME: "${AWS_LAMBDA_LOG_STREAM_NAME}"
+      AWS_LAMBDA_RUNTIME_API: "${AWS_LAMBDA_RUNTIME_API}"
+      LAMBDA_RUNTIME_DIR: "${LAMBDA_RUNTIME_DIR}"
+      LAMBDA_TASK_ROOT: "${LAMBDA_TASK_ROOT}"
