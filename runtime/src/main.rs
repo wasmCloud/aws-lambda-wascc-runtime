@@ -5,7 +5,7 @@
 use env_logger;
 use log::info;
 use std::error::Error;
-use wascc_host::HostManifest;
+use wascc_host::{host, HostManifest};
 
 const MANIFEST_FILE: &str = "manifest.yaml";
 
@@ -21,7 +21,8 @@ fn main() -> Result<(), Box<dyn Error>> {
         info!("Loading {} from {}", MANIFEST_FILE, cwd);
     }
 
-    HostManifest::from_yaml_with_env_expansion(MANIFEST_FILE)?;
+    let manifest = HostManifest::from_yaml_with_env_expansion(MANIFEST_FILE)?;
+    host::apply_manifest(manifest)?;
 
     info!("Main thread park");
     std::thread::park();
