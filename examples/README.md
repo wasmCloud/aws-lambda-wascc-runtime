@@ -31,5 +31,5 @@ $ terraform apply
 ### To Run
 
 ```console
-$ aws --region us-west-2 lambda invoke --function-name waSCC-example --payload '{"firstName": "world"}' output.json
+$ aws --region us-west-2 lambda invoke --function-name waSCC-example --payload '{"input": "Hello world"}' output.json
 ```
