@@ -28,7 +28,7 @@ data "aws_region" "current" {}
 
 resource "aws_lambda_function" "example" {
   filename         = "${path.module}/app.zip"
-  source_code_hash = base64sha256("${path.module}/app.zip")
+  source_code_hash = filebase64sha256("${path.module}/app.zip")
   function_name    = "waSCC-example"
   role             = aws_iam_role.example.arn
   handler          = "doesnt.matter"
