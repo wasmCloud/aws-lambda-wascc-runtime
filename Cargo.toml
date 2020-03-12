@@ -4,6 +4,3 @@ members = [
     "provider",
     "runtime",
 ]
-
-[patch.crates-io]
-wascc-host = { path = "./.wascc-host" }

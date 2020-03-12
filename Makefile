@@ -6,7 +6,7 @@ BUILDER = rust:1.41.1-amazonlinux2018.03.0.20191219.0
 
 all: build
 
-build: .wascc-host
+build:
 	cargo build
 
 builder-image:
@@ -22,13 +22,10 @@ doc:
 	@$(CARGO) doc
 
 release:
-	@docker run --volume $(PWD):/volume --volume $(PWD)/.wascc-host:/volume/.wascc-host --rm --tty $(BUILDER) cargo build --release
+	@docker run --volume $(PWD):/volume --rm --tty $(BUILDER) cargo build --release
 
 test: build
 	@$(CARGO) test
 
 update:
 	@$(CARGO) update
-
-.wascc-host:
-	ln -s ../../wascc/wascc-host ./.wascc-host
