@@ -1,8 +1,10 @@
 [package]
 name = "aws-lambda-runtime-codec"
 version = "0.1.0"
-authors = ["Kit Ewbank <Christopher.Ewbank@capitalone.com>"]
+authors = ["Kit Ewbank <Kit_Ewbank@hotmail.com>"]
 edition = "2018"
+license = "Apache-2.0"
+readme = "README.md"
 
 [dependencies]
 serde = "1.0.104"
