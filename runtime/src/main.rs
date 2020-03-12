@@ -21,7 +21,8 @@ fn main() -> Result<(), Box<dyn Error>> {
         info!("Loading {} from {}", MANIFEST_FILE, cwd);
     }
 
-    let manifest = HostManifest::from_yaml_with_env_expansion(MANIFEST_FILE)?;
+    // Load from well-known manifest file and expand any environment variables.
+    let manifest = HostManifest::from_yaml(MANIFEST_FILE, true)?;
     host::apply_manifest(manifest)?;
 
     info!("Main thread park");
