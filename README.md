@@ -13,3 +13,7 @@ This workspace includes multiple crates:
 ```console
 make release
 ```
+
+## Examples
+
+Examples are in [`examples`](examples/README.md).
