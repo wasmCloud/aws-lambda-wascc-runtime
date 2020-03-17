@@ -10,8 +10,10 @@ This workspace includes multiple crates:
 
 ## Build
 
+Build a binary suitable for running on Amazon Linux using a [builder image](https://hub.docker.com/repository/docker/ewbankkit/rust-amazonlinux):
+
 ```console
-make release
+$ make release
 ```
 
 ## Examples
