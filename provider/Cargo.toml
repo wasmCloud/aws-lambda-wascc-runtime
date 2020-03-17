@@ -16,4 +16,4 @@ wascc-codec = "0.5.0"
 reqwest = { version = "0.10.3", features = ["blocking", "json"] }
 serde = "1.0.104"
 serde_json = "1.0.48"
-aws-lambda-runtime-codec = { path = "../codec", version = "^0.1" }
+aws-lambda-runtime-codec = { path = "../codec" }
