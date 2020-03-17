@@ -4,3 +4,6 @@ members = [
     "provider",
     "runtime",
 ]
+
+[patch.crates-io]
+nkeys = { git = "https://github.com/ewbankkit/nkeys", branch = "issue-2" }
