@@ -4,6 +4,7 @@ actors:
 
 capabilities:
   - libaws_lambda_runtime_provider.so
+  - libamazon_sqs_messaging_provider.so
 
 config:
   - actor: "MCUK7LAGU77VY2YPBGX6BPXNC2SGMGM5MJZRCBVMXL5F7HFKC7RN23QD"

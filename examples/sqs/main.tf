@@ -39,7 +39,7 @@ resource "aws_lambda_function" "example" {
   environment {
     variables = {
       RUST_BACKTRACE = "1"
-      RUST_LOG       = "info,cranelift_wasm=warn"
+      RUST_LOG       = "info,cranelift_wasm=warn",
     }
   }
 }
@@ -114,6 +114,15 @@ resource "aws_iam_policy" "sqs_policy" {
       "Resource": [
         "${aws_sqs_queue.request.arn}"
       ]
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "sqs:SendMessage"
+      ],
+      "Resource": [
+        "${aws_sqs_queue.reply.arn}"
+      ]
     }
   ]
 }
@@ -135,10 +144,19 @@ resource "aws_lambda_event_source_mapping" "example" {
   function_name    = aws_lambda_function.example.arn
 }
 
+resource "aws_sqs_queue" "reply" {
+  name                       = "waSCC-example-sqs-reply"
+  visibility_timeout_seconds = 60
+}
+
 //
 // Outputs.
 //
 
 output "RequestQueueUrl" {
   value = aws_sqs_queue.request.id
+}
+
+output "ReplyQueueUrl" {
+  value = aws_sqs_queue.reply.id
 }

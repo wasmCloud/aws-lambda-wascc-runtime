@@ -59,6 +59,16 @@ fn handle_sqs_event(ctx: &CapabilitiesContext, event: sqs::SqsEvent) -> ReceiveR
             Some(body) => ctx.log(&format!("Body: {}", body)),
             None => ctx.log("No body")
         }
+
+        if let Some(attr) = record.message_attributes.get("ReplyQueueUrl") {
+            if let Some(url) = &attr.string_value {
+                ctx.log(&format!("Reply queue URL: {}", url));
+            } else {
+                ctx.log("Missing reply queue URL");
+            }
+        } else {
+            ctx.log("No reply queue URL");
+        }
     }
 
     Ok(serialize(runtime_codec::lambda::Response::empty())?)
