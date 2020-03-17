@@ -26,6 +26,7 @@ $ make
 
 ```console
 $ aws sqs send-message --queue-url https://sqs.us-west-2.amazonaws.com/12345689012/waSCC-example-sqs-request --message-body "Testing" --message-attributes '{"ReplyQueueUrl":{"DataType":"String","StringValue":"https://sqs.us-west-2.amazonaws.com/12345689012/waSCC-example-sqs-reply"}}'
+$ aws sqs receive-message --queue-url https://sqs.us-west-2.amazonaws.com/12345689012/waSCC-example-sqs-reply
 ```
 
 ### Known Issues
