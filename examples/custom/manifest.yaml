@@ -6,7 +6,7 @@ capabilities:
   - libaws_lambda_runtime_provider.so
 
 config:
-  - actor: "MBN36NJGPJMD3ECFRX2UZOFXDOCBBU3JWRILAOBKRN7SURHYBRKCADIT"
+  - actor: "MBIZTJVL56GKYPVDX3WW3UOUJQZFKQAHM2EQOSZ3P5B7K4WZNMAX4X2L"
     capability: "awslambda:runtime"
     # These environment variables are set by the Lambda machinery.
     # https://docs.aws.amazon.com/lambda/latest/dg/configuration-envvars.html

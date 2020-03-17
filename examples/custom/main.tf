@@ -29,7 +29,7 @@ data "aws_region" "current" {}
 resource "aws_lambda_function" "example" {
   filename         = "${path.module}/app.zip"
   source_code_hash = filebase64sha256("${path.module}/app.zip")
-  function_name    = "waSCC-example"
+  function_name    = "waSCC-example-custom"
   role             = aws_iam_role.example.arn
   handler          = "doesnt.matter"
   runtime          = "provided"
@@ -49,7 +49,7 @@ resource "aws_lambda_function" "example" {
 //
 
 resource "aws_iam_role" "example" {
-  name = "waSCC-example-Lambda-role"
+  name = "waSCC-example-custom-Lambda-role"
 
   assume_role_policy = <<EOT
 {
@@ -66,7 +66,7 @@ EOT
 }
 
 resource "aws_iam_policy" "cloudwatch_logs_policy" {
-  name = "CellCloudWatchLogsPolicy"
+  name = "waSCC-example-custom-Lambda-CloudWatchLogsPolicy"
 
   policy = <<EOT
 {

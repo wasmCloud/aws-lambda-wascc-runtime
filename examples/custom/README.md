@@ -12,6 +12,10 @@ $ cd ..
 
 ### Deploy
 
+```console
+$ terraform init
+```
+
 Set AWS environment variables for your authenticated session.
 
 ```console
@@ -21,7 +25,7 @@ $ make
 ### Test
 
 ```console
-$ aws lambda invoke --function-name waSCC-example --payload '{"input": "Hello world"}' output.json
+$ aws lambda invoke --function-name waSCC-example-custom --payload '{"input": "Hello world"}' output.json
 ```
 
 `output.json` should contain the input text converted to uppercase.
