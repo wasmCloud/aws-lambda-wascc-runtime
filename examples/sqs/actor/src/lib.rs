@@ -43,7 +43,7 @@ fn handle_event(
     // Is this a batch of messages from SQS?
     match serde_json::from_slice(&body) {
         Ok(r) => handle_sqs_event(ctx, r),
-        _ => Err("Unsupported Lambda event".into())
+        _ => Err("Unsupported Lambda event".into()),
     }
 }
 
@@ -53,21 +53,27 @@ fn handle_sqs_event(ctx: &CapabilitiesContext, event: sqs::SqsEvent) -> ReceiveR
     for record in event.records.iter() {
         match &record.message_id {
             Some(message_id) => ctx.log(&format!("Message ID: {}", message_id)),
-            None => ctx.log("No message ID")
+            None => ctx.log("No message ID"),
         };
-        match &record.body {
-            Some(body) => ctx.log(&format!("Body: {}", body)),
-            None => ctx.log("No body")
-        }
 
-        if let Some(attr) = record.message_attributes.get("ReplyQueueUrl") {
-            if let Some(url) = &attr.string_value {
-                ctx.log(&format!("Reply queue URL: {}", url));
+        if let Some(body) = &record.body {
+            ctx.log(&format!("Body: {}", body));
+            let payload = body.to_uppercase();
+
+            if let Some(attr) = record.message_attributes.get("ReplyQueueUrl") {
+                if let Some(url) = &attr.string_value {
+                    ctx.log(&format!("Reply queue URL: {}", url));
+                    ctx.log(&format!("Response payload: {}", payload));
+
+                    ctx.msg().publish(url, None, payload.as_bytes())?;
+                } else {
+                    ctx.log("Missing reply queue URL");
+                }
             } else {
-                ctx.log("Missing reply queue URL");
+                ctx.log("No reply queue URL");
             }
         } else {
-            ctx.log("No reply queue URL");
+            ctx.log("No body");
         }
     }
 
