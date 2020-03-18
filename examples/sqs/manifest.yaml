@@ -3,7 +3,6 @@ actors:
   - wascc_actor_lambda_sqs_signed.wasm
 
 capabilities:
-  - libaws_lambda_runtime_provider.so
   - libamazon_sqs_messaging_provider.so
 
 config:
