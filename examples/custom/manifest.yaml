@@ -2,8 +2,7 @@
 actors:
   - wascc_actor_hello_lambda_signed.wasm
 
-capabilities:
-  - libaws_lambda_runtime_provider.so
+capabilities: []
 
 config:
   - actor: "MBIZTJVL56GKYPVDX3WW3UOUJQZFKQAHM2EQOSZ3P5B7K4WZNMAX4X2L"

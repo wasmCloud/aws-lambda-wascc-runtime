@@ -16,10 +16,12 @@
 // waSCC AWS Lambda Runtime
 //
 
+extern crate aws_lambda_runtime_provider as runtime_provider;
+
 use env_logger;
 use log::info;
 use std::error::Error;
-use wascc_host::{host, HostManifest};
+use wascc_host::{host, HostManifest, NativeCapability};
 
 const MANIFEST_FILE: &str = "manifest.yaml";
 
@@ -30,6 +32,9 @@ fn main() -> Result<(), Box<dyn Error>> {
     }
 
     info!("aws-lambda-wascc-runtime starting");
+
+    let rt = runtime_provider::AwsLambdaRuntimeProvider::new();
+    host::add_native_capability(NativeCapability::from_instance(rt)?)?;
 
     if let Some(cwd) = std::env::current_dir()?.to_str() {
         info!("Loading {} from {}", MANIFEST_FILE, cwd);

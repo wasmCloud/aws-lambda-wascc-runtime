@@ -6,9 +6,6 @@ edition = "2018"
 license = "Apache-2.0"
 readme = "README.md"
 
-[lib]
-crate-type = ["cdylib", "rlib"]
-
 [dependencies]
 env_logger = "0.7.1"
 log = "0.4.8"
