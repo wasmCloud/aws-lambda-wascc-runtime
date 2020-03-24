@@ -12,6 +12,9 @@ $ cd ..
 
 ### Deploy
 
+This examples uses the `wascc-slim` Lambda layer.
+See [`layers`](../../layers/README/md) for instructions on building the waSCC runtime Lambda layers.
+
 ```console
 $ terraform init
 ```

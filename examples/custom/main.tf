@@ -8,8 +8,6 @@ terraform {
 
 provider "aws" {
   version = ">= 2.50.0"
-
-  region = "us-west-2"
 }
 
 //
@@ -26,6 +24,10 @@ data "aws_region" "current" {}
 // Lambda resources.
 //
 
+data "aws_lambda_layer_version" "slim" {
+  layer_name = "wascc-slim"
+}
+
 resource "aws_lambda_function" "example" {
   filename         = "${path.module}/app.zip"
   source_code_hash = filebase64sha256("${path.module}/app.zip")
@@ -35,6 +37,8 @@ resource "aws_lambda_function" "example" {
   runtime          = "provided"
   memory_size      = 256
   timeout          = 90
+
+  layers = [data.aws_lambda_layer_version.slim.arn]
 
   environment {
     variables = {

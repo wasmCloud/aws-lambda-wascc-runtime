@@ -5,5 +5,5 @@ all: apply
 apply: app.zip
 	terraform12 apply
 
-app.zip: manifest.yaml actor/target/wasm32-unknown-unknown/release/wascc_actor_hello_lambda_signed.wasm ../../target/release/bootstrap
+app.zip: manifest.yaml actor/target/wasm32-unknown-unknown/release/wascc_actor_hello_lambda_signed.wasm
 	zip -j $@ $^

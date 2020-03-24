@@ -16,6 +16,10 @@ Build a binary suitable for running on Amazon Linux using a [builder image](http
 $ make release
 ```
 
+## Lambda Layers
+
+Instructions for building [AWS Lambda Layers](https://docs.aws.amazon.com/lambda/latest/dg/configuration-layers.html) containing the waSCC runtime are in [`layers`](layers/README.md).
+
 ## Examples
 
 Examples are in [`examples`](examples/README.md).
