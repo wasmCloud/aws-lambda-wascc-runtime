@@ -1,5 +1,5 @@
 //
-// Layeyers for waSCC runtime for AWS Lambda.
+// Layers for the waSCC runtime for AWS Lambda.
 //
 
 terraform {
