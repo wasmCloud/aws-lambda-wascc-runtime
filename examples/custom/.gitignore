@@ -3,6 +3,5 @@
 terraform.tfstate
 terraform.tfstate.backup
 
-bootstrap
 app.zip
 output.json
