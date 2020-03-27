@@ -27,9 +27,10 @@ use wascc_host::{host, HostManifest, NativeCapability};
 
 const MANIFEST_FILE: &str = "manifest.yaml";
 
-// Entry point.
+/// Entry point.
 fn main() -> Result<(), Box<dyn Error>> {
-    if env_logger::try_init().is_err() {
+    // No timestamp in the log format as CloudWatch already adds it.
+    if env_logger::builder().format_timestamp(None).try_init().is_err() {
         info!("Logger already intialized");
     }
 
