@@ -19,7 +19,9 @@
 extern crate aws_lambda_runtime_provider as runtime_provider;
 
 use env_logger;
-use log::info;
+use log::{info, warn};
+use std::collections::HashMap;
+use std::env;
 use std::error::Error;
 use wascc_host::{host, HostManifest, NativeCapability};
 
@@ -44,10 +46,46 @@ fn main() -> Result<(), Box<dyn Error>> {
     let manifest = HostManifest::from_yaml(MANIFEST_FILE, true)?;
     host::apply_manifest(manifest)?;
 
+    autoconfigure_runtime()?;
+
     info!("Main thread park");
     std::thread::park();
 
     info!("aws-lambda-wascc-runtime ending");
+
+    Ok(())
+}
+
+/// Autoconfigures any actors that have the awslambda:runtime capability.
+fn autoconfigure_runtime() -> Result<(), Box<dyn Error>> {
+    let mut values = HashMap::new();
+    let keys = vec![
+        "AWS_LAMBDA_FUNCTION_NAME",
+        "AWS_LAMBDA_FUNCTION_VERSION",
+        "AWS_LAMBDA_LOG_GROUP_NAME",
+        "AWS_LAMBDA_LOG_STREAM_NAME",
+        "AWS_LAMBDA_RUNTIME_API",
+        "LAMBDA_RUNTIME_DIR",
+        "LAMBDA_TASK_ROOT",
+    ];
+    for key in keys {
+        if let Ok(val) = env::var(key) {
+            values.insert(key.into(), val);
+        } else {
+            warn!("Environment variable {} not set", key);
+        }
+    }
+
+    for actor in host::actors() {
+        match host::configure(&actor.0, runtime_provider::CAPABILITY_ID, values.clone()) {
+            Ok(_) => info!("Autoconfigured actor {}", actor.0),
+            Err(e) => info!(
+                "Autoconfiguration skipped actor {}: {}",
+                actor.0,
+                e.description()
+            ),
+        };
+    }
 
     Ok(())
 }

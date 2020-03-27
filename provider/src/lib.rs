@@ -36,7 +36,7 @@ use std::thread;
 
 mod lambda;
 
-const CAPABILITY_ID: &str = "awslambda:runtime";
+pub const CAPABILITY_ID: &str = "awslambda:runtime";
 
 capability_provider!(AwsLambdaRuntimeProvider, AwsLambdaRuntimeProvider::new);
 
@@ -215,7 +215,14 @@ impl AwsLambdaRuntimeClient {
                 };
                 let buf = serialize(event).unwrap();
                 let lock = self.dispatcher.read().unwrap();
-                lock.dispatch(&format!("{}!{}", &self.module_id, runtime_codec::lambda::OP_HANDLE_EVENT), &buf)
+                lock.dispatch(
+                    &format!(
+                        "{}!{}",
+                        &self.module_id,
+                        runtime_codec::lambda::OP_HANDLE_EVENT
+                    ),
+                    &buf,
+                )
             };
             // Handle response or error.
             match handler_resp {

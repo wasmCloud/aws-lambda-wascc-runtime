@@ -6,16 +6,4 @@ capabilities:
   # Layers are extracted to the /opt directory in the function execution environment.
   - /opt/libwascc_log.so
 
-config:
-  - actor: "MBIZTJVL56GKYPVDX3WW3UOUJQZFKQAHM2EQOSZ3P5B7K4WZNMAX4X2L"
-    capability: "awslambda:runtime"
-    # These environment variables are set by the Lambda machinery.
-    # https://docs.aws.amazon.com/lambda/latest/dg/configuration-envvars.html
-    values:
-      AWS_LAMBDA_FUNCTION_NAME: "${AWS_LAMBDA_FUNCTION_NAME}"
-      AWS_LAMBDA_FUNCTION_VERSION: "${AWS_LAMBDA_FUNCTION_VERSION}"
-      AWS_LAMBDA_LOG_GROUP_NAME: "${AWS_LAMBDA_LOG_GROUP_NAME}"
-      AWS_LAMBDA_LOG_STREAM_NAME: "${AWS_LAMBDA_LOG_STREAM_NAME}"
-      AWS_LAMBDA_RUNTIME_API: "${AWS_LAMBDA_RUNTIME_API}"
-      LAMBDA_RUNTIME_DIR: "${LAMBDA_RUNTIME_DIR}"
-      LAMBDA_TASK_ROOT: "${LAMBDA_TASK_ROOT}"
+config: []
