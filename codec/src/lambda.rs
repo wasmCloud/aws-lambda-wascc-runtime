@@ -34,12 +34,13 @@ pub struct Response {
 
 impl Response {
     pub fn empty() -> Response {
-        Response {
-            body: vec![],
-        }
+        Response { body: vec![] }
     }
 
-    pub fn json<T>(v: &T) -> Result<Response, Box<dyn std::error::Error>> where T: serde::ser::Serialize + ?Sized {
+    pub fn json<T>(v: &T) -> Result<Response, Box<dyn std::error::Error>>
+    where
+        T: serde::ser::Serialize + ?Sized,
+    {
         Ok(Response {
             body: serde_json::to_vec(v)?,
         })
