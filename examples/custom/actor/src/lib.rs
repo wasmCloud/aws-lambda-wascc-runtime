@@ -16,6 +16,9 @@
 // waSCC AWS Lambda Actor
 //
 
+#[macro_use]
+extern crate log;
+
 extern crate aws_lambda_runtime_codec as runtime_codec;
 extern crate wascc_actor as actor;
 
@@ -26,8 +29,8 @@ use serde_json::json;
 
 actor_handlers! {runtime_codec::lambda::OP_HANDLE_EVENT => handle_event, core::OP_HEALTH_REQUEST => health}
 
-fn health(ctx: &CapabilitiesContext, _req: core::HealthRequest) -> ReceiveResult {
-    ctx.log("Actor health");
+fn health(_ctx: &CapabilitiesContext, _req: core::HealthRequest) -> ReceiveResult {
+    info!("Actor health");
 
     Ok(vec![])
 }
@@ -36,7 +39,7 @@ fn handle_event(
     ctx: &CapabilitiesContext,
     event: aws_lambda_runtime_codec::lambda::Event,
 ) -> ReceiveResult {
-    ctx.log("Actor handle event");
+    info!("Actor handle event");
 
     let body = event.body;
 
@@ -49,14 +52,14 @@ fn handle_event(
     handle_custom_event(ctx, body)
 }
 
-fn handle_apigw_proxy_request(ctx: &CapabilitiesContext, _request: apigw::ApiGatewayProxyRequest) -> ReceiveResult {
-    ctx.log("Handle API Gateway proxy event");
+fn handle_apigw_proxy_request(_ctx: &CapabilitiesContext, _request: apigw::ApiGatewayProxyRequest) -> ReceiveResult {
+    info!("Handle API Gateway proxy event");
 
     Ok(serialize(runtime_codec::lambda::Response::empty())?)
 }
 
-fn handle_custom_event(ctx: &CapabilitiesContext, body: Vec<u8>) -> ReceiveResult {
-    ctx.log("Handle custom event");
+fn handle_custom_event(_ctx: &CapabilitiesContext, body: Vec<u8>) -> ReceiveResult {
+    info!("Handle custom event");
 
     let output: String = match serde_json::from_slice(&body)? {
         serde_json::Value::Object(m) => {
@@ -74,7 +77,7 @@ fn handle_custom_event(ctx: &CapabilitiesContext, body: Vec<u8>) -> ReceiveResul
         "output": output,
     });
 
-    ctx.log(&format!("Output: {}", &output));
+    info!("Output: {}", &output);
 
     Ok(serialize(runtime_codec::lambda::Response::json(
         &response,
