@@ -208,7 +208,7 @@ impl AwsLambdaRuntimeClient {
             // Call handler.
             debug!("AwsLambdaRuntimeClient call handler");
             let handler_resp = {
-                let event = codec::lambda::Event {
+                let event = codec::Event {
                     body: event.body().to_vec(),
                 };
                 let buf = serialize(event).unwrap();
@@ -217,7 +217,7 @@ impl AwsLambdaRuntimeClient {
                     &format!(
                         "{}!{}",
                         &self.module_id,
-                        codec::lambda::OP_HANDLE_EVENT
+                        codec::OP_HANDLE_EVENT
                     ),
                     &buf,
                 )
@@ -225,7 +225,7 @@ impl AwsLambdaRuntimeClient {
             // Handle response or error.
             match handler_resp {
                 Ok(r) => {
-                    let r = deserialize::<codec::lambda::Response>(r.as_slice()).unwrap();
+                    let r = deserialize::<codec::Response>(r.as_slice()).unwrap();
                     let invocation_resp = lambda::InvocationResponse::new(r.body)
                         .request_id(event.request_id().unwrap());
                     debug!("AwsLambdaRuntimeClient send response");

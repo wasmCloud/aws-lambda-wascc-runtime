@@ -20,15 +20,17 @@ use serde_json;
 
 pub const OP_HANDLE_EVENT: &str = "HandleEvent";
 
-// Describes an event received from AWS Lambda.
+/// Describes an event received from AWS Lambda.
 #[derive(Debug, PartialEq, Deserialize, Serialize)]
 pub struct Event {
+    /// JSON.
     pub body: Vec<u8>,
 }
 
-// Describes a response to AWS Lambda.
+/// Describes a response to AWS Lambda.
 #[derive(Debug, PartialEq, Deserialize, Serialize)]
 pub struct Response {
+    /// JSON.
     pub body: Vec<u8>,
 }
 
