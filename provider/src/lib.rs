@@ -19,13 +19,11 @@
 #[macro_use]
 extern crate log;
 #[macro_use]
-extern crate wascc_codec as codec;
+extern crate wascc_codec;
 
-extern crate aws_lambda_runtime_codec as runtime_codec;
-
-use codec::capabilities::{CapabilityProvider, Dispatcher, NullDispatcher};
-use codec::core::{CapabilityConfiguration, OP_CONFIGURE, OP_REMOVE_ACTOR};
-use codec::{deserialize, serialize};
+use wascc_codec::capabilities::{CapabilityProvider, Dispatcher, NullDispatcher};
+use wascc_codec::core::{CapabilityConfiguration, OP_CONFIGURE, OP_REMOVE_ACTOR};
+use wascc_codec::{deserialize, serialize};
 use env_logger;
 use std::collections::HashMap;
 use std::env;
@@ -210,7 +208,7 @@ impl AwsLambdaRuntimeClient {
             // Call handler.
             debug!("AwsLambdaRuntimeClient call handler");
             let handler_resp = {
-                let event = runtime_codec::lambda::Event {
+                let event = codec::lambda::Event {
                     body: event.body().to_vec(),
                 };
                 let buf = serialize(event).unwrap();
@@ -219,7 +217,7 @@ impl AwsLambdaRuntimeClient {
                     &format!(
                         "{}!{}",
                         &self.module_id,
-                        runtime_codec::lambda::OP_HANDLE_EVENT
+                        codec::lambda::OP_HANDLE_EVENT
                     ),
                     &buf,
                 )
@@ -227,7 +225,7 @@ impl AwsLambdaRuntimeClient {
             // Handle response or error.
             match handler_resp {
                 Ok(r) => {
-                    let r = deserialize::<runtime_codec::lambda::Response>(r.as_slice()).unwrap();
+                    let r = deserialize::<codec::lambda::Response>(r.as_slice()).unwrap();
                     let invocation_resp = lambda::InvocationResponse::new(r.body)
                         .request_id(event.request_id().unwrap());
                     debug!("AwsLambdaRuntimeClient send response");
