@@ -29,13 +29,13 @@ pub struct InvocationEvent {
 // Represents an invocation response.
 pub struct InvocationResponse {
     body: Vec<u8>,
-    request_id: Option<String>,
+    request_id: String,
 }
 
 // Represents an invocation error.
 pub struct InvocationError {
     error: Box<dyn Error>,
-    request_id: Option<String>,
+    request_id: String,
 }
 
 // Represents an AWS Lambda runtime HTTP client.
@@ -87,15 +87,10 @@ impl RuntimeClient {
 
     // Sends an invocation error to the AWS Lambda runtime.
     pub fn send_invocation_error(&self, error: InvocationError) -> Result<(), Box<dyn Error>> {
-        if error.request_id.is_none() {
-            return Err("No request ID specified".into());
-        }
-
         // https://docs.aws.amazon.com/lambda/latest/dg/runtimes-api.html#runtimes-api-invokeerror
         let url = format!(
             "http://{}/2018-06-01/runtime/invocation/{}/error",
-            self.endpoint,
-            error.request_id.unwrap()
+            self.endpoint, error.request_id
         );
         let resp = self
             .http_client
@@ -117,15 +112,10 @@ impl RuntimeClient {
 
     // Sends an invocation response to the AWS Lambda runtime.
     pub fn send_invocation_response(&self, resp: InvocationResponse) -> Result<(), Box<dyn Error>> {
-        if resp.request_id.is_none() {
-            return Err("No request ID specified".into());
-        }
-
         // https://docs.aws.amazon.com/lambda/latest/dg/runtimes-api.html#runtimes-api-response
         let url = format!(
             "http://{}/2018-06-01/runtime/invocation/{}/response",
-            self.endpoint,
-            resp.request_id.unwrap()
+            self.endpoint, resp.request_id
         );
         let resp = self.http_client.post(&url).body(resp.body).send()?;
         let status = resp.status();
@@ -133,7 +123,7 @@ impl RuntimeClient {
             "POST {} {} {}",
             url,
             status.as_str(),
-            status.canonical_reason().unwrap()
+            status.canonical_reason().unwrap_or("Unknown")
         );
 
         Ok(())
@@ -167,37 +157,21 @@ impl InvocationEvent {
 }
 
 impl InvocationResponse {
-    // Creates a new `InvocationResponse` with the specified body.
-    pub fn new(body: Vec<u8>) -> Self {
+    /// Creates a new `InvocationResponse` with the specified body and request ID.
+    pub fn new(body: Vec<u8>, request_id: &str) -> Self {
         InvocationResponse {
             body: body,
-            request_id: None,
-        }
-    }
-
-    // Creates a new `InvocationResponse` with the specified request ID.
-    pub fn request_id(self, request_id: &str) -> Self {
-        InvocationResponse {
-            body: self.body,
-            request_id: Some(request_id.into()),
+            request_id: request_id.into(),
         }
     }
 }
 
 impl InvocationError {
-    // Creates a new `InvocationError` with the specified error.
-    pub fn new(error: Box<dyn Error>) -> Self {
+    /// Creates a new `InvocationError` with the specified error and request ID.
+    pub fn new(error: Box<dyn Error>, request_id: &str) -> Self {
         InvocationError {
             error: error,
-            request_id: None,
-        }
-    }
-
-    // Creates a new `InvocationError` with the specified request ID.
-    pub fn request_id(self, request_id: &str) -> Self {
-        InvocationError {
-            error: self.error,
-            request_id: Some(request_id.into()),
+            request_id: request_id.into(),
         }
     }
 }

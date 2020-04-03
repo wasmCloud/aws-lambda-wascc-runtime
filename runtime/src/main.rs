@@ -16,7 +16,7 @@
 // waSCC AWS Lambda Runtime
 //
 
-extern crate aws_lambda_runtime_provider as runtime_provider;
+extern crate provider;
 
 use env_logger;
 use log::{info, warn};
@@ -30,13 +30,17 @@ const MANIFEST_FILE: &str = "manifest.yaml";
 /// Entry point.
 fn main() -> Result<(), Box<dyn Error>> {
     // No timestamp in the log format as CloudWatch already adds it.
-    if env_logger::builder().format_timestamp(None).try_init().is_err() {
+    if env_logger::builder()
+        .format_timestamp(None)
+        .try_init()
+        .is_err()
+    {
         info!("Logger already intialized");
     }
 
     info!("aws-lambda-wascc-runtime starting");
 
-    let rt = runtime_provider::AwsLambdaRuntimeProvider::new();
+    let rt = provider::AwsLambdaRuntimeProvider::new();
     host::add_native_capability(NativeCapability::from_instance(rt)?)?;
 
     if let Some(cwd) = std::env::current_dir()?.to_str() {
@@ -60,6 +64,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 /// Autoconfigures any actors that have the awslambda:runtime capability.
 fn autoconfigure_runtime() -> Result<(), Box<dyn Error>> {
     let mut values = HashMap::new();
+    // https://docs.aws.amazon.com/lambda/latest/dg/configuration-envvars.html#configuration-envvars-runtime
     let keys = vec![
         "AWS_LAMBDA_FUNCTION_NAME",
         "AWS_LAMBDA_FUNCTION_VERSION",
@@ -78,7 +83,7 @@ fn autoconfigure_runtime() -> Result<(), Box<dyn Error>> {
     }
 
     for actor in host::actors() {
-        match host::configure(&actor.0, runtime_provider::CAPABILITY_ID, values.clone()) {
+        match host::configure(&actor.0, provider::CAPABILITY_ID, values.clone()) {
             Ok(_) => info!("Autoconfigured actor {}", actor.0),
             Err(e) => info!(
                 "Autoconfiguration skipped actor {}: {}",

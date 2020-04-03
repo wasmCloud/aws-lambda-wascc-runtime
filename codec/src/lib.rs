@@ -19,4 +19,5 @@
 #[macro_use]
 extern crate serde_derive;
 
-pub mod lambda;
+mod lambda;
+pub use lambda::{Event, Response, OP_HANDLE_EVENT};

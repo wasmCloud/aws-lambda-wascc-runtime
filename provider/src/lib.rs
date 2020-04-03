@@ -19,16 +19,14 @@
 #[macro_use]
 extern crate log;
 #[macro_use]
-extern crate wascc_codec as codec;
+extern crate wascc_codec;
 
-extern crate aws_lambda_runtime_codec as runtime_codec;
-
-use codec::capabilities::{CapabilityProvider, Dispatcher, NullDispatcher};
-use codec::core::{CapabilityConfiguration, OP_CONFIGURE, OP_REMOVE_ACTOR};
-use codec::{deserialize, serialize};
 use env_logger;
 use std::collections::HashMap;
 use std::env;
+use wascc_codec::capabilities::{CapabilityProvider, Dispatcher, NullDispatcher};
+use wascc_codec::core::{CapabilityConfiguration, OP_CONFIGURE, OP_REMOVE_ACTOR};
+use wascc_codec::{deserialize, serialize};
 
 use std::error::Error;
 use std::sync::{Arc, RwLock};
@@ -40,17 +38,17 @@ pub const CAPABILITY_ID: &str = "awslambda:runtime";
 
 capability_provider!(AwsLambdaRuntimeProvider, AwsLambdaRuntimeProvider::new);
 
-// Represents a waSCC AWS Lambda runtime provider.
+/// Represents a waSCC AWS Lambda runtime provider.
 pub struct AwsLambdaRuntimeProvider {
-    client_shutdown: Arc<RwLock<HashMap<String, bool>>>,
     dispatcher: Arc<RwLock<Box<dyn Dispatcher>>>,
+    shutdown: Arc<RwLock<HashMap<String, bool>>>,
 }
 
-// Represents an AWS Lambda runtime client.
-struct AwsLambdaRuntimeClient {
+/// Polls the Lambda event machinery.
+struct Poller {
+    client: lambda::RuntimeClient,
     dispatcher: Arc<RwLock<Box<dyn Dispatcher>>>,
     module_id: String,
-    runtime_client: lambda::RuntimeClient,
     shutdown: Arc<RwLock<HashMap<String, bool>>>,
 }
 
@@ -62,56 +60,52 @@ impl Default for AwsLambdaRuntimeProvider {
         }
 
         AwsLambdaRuntimeProvider {
-            client_shutdown: Arc::new(RwLock::new(HashMap::new())),
             dispatcher: Arc::new(RwLock::new(Box::new(NullDispatcher::new()))),
+            shutdown: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 }
 
 impl AwsLambdaRuntimeProvider {
-    // Creates a new, empty `AwsLambdaRuntimeProvider`.
+    /// Creates a new, empty `AwsLambdaRuntimeProvider`.
     pub fn new() -> Self {
         Self::default()
     }
 
-    // Starts the Lambda runtime client.
-    fn start_runtime_client(&self, config: CapabilityConfiguration) -> Result<(), Box<dyn Error>> {
-        info!("awslambda:runtime start_runtime_client");
+    /// Starts polling the Lambda event machinery.
+    fn start_polling(&self, config: CapabilityConfiguration) -> Result<(), Box<dyn Error>> {
+        info!("awslambda:runtime start_polling");
 
-        let client_shutdown = Arc::clone(&self.client_shutdown);
         let dispatcher = Arc::clone(&self.dispatcher);
         let endpoint = match config.values.get("AWS_LAMBDA_RUNTIME_API") {
             Some(ep) => String::from(ep),
             None => return Err("Missing configuration value: AWS_LAMBDA_RUNTIME_API".into()),
         };
         let module_id = config.module;
+        let shutdown = Arc::clone(&self.shutdown);
         thread::spawn(move || {
-            info!("Starting runtime client for actor {}", module_id);
+            info!("Starting poller for actor {}", module_id);
 
-            // Initialize this client's shutdown flag.
-            client_shutdown
-                .write()
-                .unwrap()
-                .insert(module_id.clone(), false);
+            // Initialize this poller's shutdown flag.
+            shutdown.write().unwrap().insert(module_id.clone(), false);
 
-            let client =
-                AwsLambdaRuntimeClient::new(&endpoint, &module_id, dispatcher, client_shutdown);
-            client.run_until_shutdown();
+            let poller = Poller::new(&module_id, &endpoint, dispatcher, shutdown);
+            poller.run();
         });
 
         Ok(())
     }
 
-    // Stops any running Lambda runtime client.
-    fn stop_runtime_client(&self, config: CapabilityConfiguration) -> Result<(), Box<dyn Error>> {
-        info!("awslambda:runtime stop_runtime_client");
+    /// Stops any running Lambda poller.
+    fn stop_polling(&self, config: CapabilityConfiguration) -> Result<(), Box<dyn Error>> {
+        info!("awslambda:runtime stop_polling");
 
         let module_id = &config.module;
         {
-            let mut lock = self.client_shutdown.write().unwrap();
+            let mut lock = self.shutdown.write().unwrap();
             if !lock.contains_key(module_id) {
                 error!(
-                    "Received request to stop runtime client for unknown actor {}. Ignoring",
+                    "Received request to stop poller for unknown actor {}. Ignoring",
                     module_id
                 );
                 return Ok(());
@@ -119,7 +113,7 @@ impl AwsLambdaRuntimeProvider {
             *lock.get_mut(module_id).unwrap() = true;
         }
         {
-            let mut lock = self.client_shutdown.write().unwrap();
+            let mut lock = self.shutdown.write().unwrap();
             lock.remove(module_id).unwrap();
         }
 
@@ -128,12 +122,12 @@ impl AwsLambdaRuntimeProvider {
 }
 
 impl CapabilityProvider for AwsLambdaRuntimeProvider {
-    // Returns the capability ID in the formated `namespace:id`.
+    /// Returns the capability ID in the formated `namespace:id`.
     fn capability_id(&self) -> &'static str {
         CAPABILITY_ID
     }
 
-    // Called when the host runtime is ready and has configured a dispatcher.
+    /// Called when the host runtime is ready and has configured a dispatcher.
     fn configure_dispatch(&self, dispatcher: Box<dyn Dispatcher>) -> Result<(), Box<dyn Error>> {
         info!("awslambda:runtime configure_dispatch");
 
@@ -143,51 +137,51 @@ impl CapabilityProvider for AwsLambdaRuntimeProvider {
         Ok(())
     }
 
-    // Called by the host runtime when an actor is requesting a command be executed.
+    /// Called by the host runtime when an actor is requesting a command be executed.
     fn handle_call(&self, actor: &str, op: &str, msg: &[u8]) -> Result<Vec<u8>, Box<dyn Error>> {
         info!("awslambda:runtime handle_call `{}` from `{}`", op, actor);
 
         match op {
-            OP_CONFIGURE if actor == "system" => self.start_runtime_client(deserialize(msg)?)?,
-            OP_REMOVE_ACTOR if actor == "system" => self.stop_runtime_client(deserialize(msg)?)?,
+            OP_CONFIGURE if actor == "system" => self.start_polling(deserialize(msg)?)?,
+            OP_REMOVE_ACTOR if actor == "system" => self.stop_polling(deserialize(msg)?)?,
             _ => return Err(format!("Unsupported operation: {}", op).into()),
         }
 
         Ok(vec![])
     }
 
-    // Returns the human-readable, friendly name of this capability provider.
+    /// Returns the human-readable, friendly name of this capability provider.
     fn name(&self) -> &'static str {
         "waSCC AWS Lambda runtime provider"
     }
 }
 
-impl AwsLambdaRuntimeClient {
-    // Creates a new `AwsLambdaRuntimeClient`.
+impl Poller {
+    /// Creates a new `Poller`.
     fn new(
-        endpoint: &str,
         module_id: &str,
+        endpoint: &str,
         dispatcher: Arc<RwLock<Box<dyn Dispatcher>>>,
         shutdown: Arc<RwLock<HashMap<String, bool>>>,
     ) -> Self {
-        AwsLambdaRuntimeClient {
+        Poller {
+            client: lambda::RuntimeClient::new(endpoint),
             dispatcher,
             module_id: module_id.into(),
-            runtime_client: lambda::RuntimeClient::new(endpoint),
             shutdown,
         }
     }
 
-    // Runs until shutdown.
-    fn run_until_shutdown(&self) {
+    /// Runs the poller until shutdown.
+    fn run(&self) {
         loop {
             if self.shutdown() {
                 break;
             }
 
             // Get next event.
-            debug!("AwsLambdaRuntimeClient get next event");
-            let event = match self.runtime_client.next_invocation_event() {
+            debug!("Poller get next event");
+            let event = match self.client.next_invocation_event() {
                 Err(err) => {
                     error!("{}", err);
                     continue;
@@ -197,10 +191,13 @@ impl AwsLambdaRuntimeClient {
                     Some(event) => event,
                 },
             };
-            if event.request_id().is_none() {
-                warn!("Missing request ID");
-                continue;
-            }
+            let request_id = match event.request_id() {
+                None => {
+                    warn!("Missing request ID");
+                    continue;
+                }
+                Some(request_id) => request_id,
+            };
 
             // Set for the X-Ray SDK.
             if let Some(trace_id) = event.trace_id() {
@@ -208,45 +205,36 @@ impl AwsLambdaRuntimeClient {
             }
 
             // Call handler.
-            debug!("AwsLambdaRuntimeClient call handler");
+            debug!("Poller call handler");
             let handler_resp = {
-                let event = runtime_codec::lambda::Event {
+                let event = codec::Event {
                     body: event.body().to_vec(),
                 };
                 let buf = serialize(event).unwrap();
                 let lock = self.dispatcher.read().unwrap();
                 lock.dispatch(
-                    &format!(
-                        "{}!{}",
-                        &self.module_id,
-                        runtime_codec::lambda::OP_HANDLE_EVENT
-                    ),
+                    &format!("{}!{}", &self.module_id, codec::OP_HANDLE_EVENT),
                     &buf,
                 )
             };
             // Handle response or error.
             match handler_resp {
                 Ok(r) => {
-                    let r = deserialize::<runtime_codec::lambda::Response>(r.as_slice()).unwrap();
-                    let invocation_resp = lambda::InvocationResponse::new(r.body)
-                        .request_id(event.request_id().unwrap());
-                    debug!("AwsLambdaRuntimeClient send response");
-                    match self
-                        .runtime_client
-                        .send_invocation_response(invocation_resp)
-                    {
+                    let r = deserialize::<codec::Response>(r.as_slice()).unwrap();
+                    let resp = lambda::InvocationResponse::new(r.body, request_id);
+                    debug!("Poller send response");
+                    match self.client.send_invocation_response(resp) {
                         Ok(_) => {}
-                        Err(err) => error!("Unable to send invocation response: {}", err),
+                        Err(e) => error!("Unable to send invocation response: {}", e),
                     }
                 }
                 Err(e) => {
                     error!("Guest failed to handle Lambda event: {}", e);
-                    let invocation_err =
-                        lambda::InvocationError::new(e).request_id(event.request_id().unwrap());
-                    debug!("AwsLambdaRuntimeClient send error");
-                    match self.runtime_client.send_invocation_error(invocation_err) {
+                    let err = lambda::InvocationError::new(e, request_id);
+                    debug!("Poller send error");
+                    match self.client.send_invocation_error(err) {
                         Ok(_) => {}
-                        Err(err) => error!("Unable to send invocation error: {}", err),
+                        Err(e) => error!("Unable to send invocation error: {}", e),
                     }
                 }
             }

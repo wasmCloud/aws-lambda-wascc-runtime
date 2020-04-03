@@ -1,5 +1,5 @@
 [package]
-name = "aws-lambda-runtime-codec"
+name = "codec"
 version = "0.1.0"
 authors = ["Kit Ewbank <Kit_Ewbank@hotmail.com>"]
 edition = "2018"

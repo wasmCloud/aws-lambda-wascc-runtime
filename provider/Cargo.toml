@@ -1,5 +1,5 @@
 [package]
-name = "aws-lambda-runtime-provider"
+name = "provider"
 version = "0.1.0"
 authors = ["Kit Ewbank <Kit_Ewbank@hotmail.com>"]
 edition = "2018"
@@ -13,4 +13,4 @@ wascc-codec = "0.5.2"
 reqwest = { version = "0.10.3", features = ["blocking", "json"] }
 serde = "1.0.104"
 serde_json = "1.0.48"
-aws-lambda-runtime-codec = { path = "../codec" }
+codec = { path = "../codec" }
