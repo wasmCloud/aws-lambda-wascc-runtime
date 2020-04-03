@@ -10,7 +10,7 @@ readme = "README.md"
 env_logger = "0.7.1"
 log = "0.4.8"
 wascc-codec = "0.5.2"
-reqwest = { version = "0.10.3", features = ["blocking", "json"] }
-serde = "1.0.104"
-serde_json = "1.0.48"
+reqwest = { version = "0.10.4", features = ["blocking", "json"] }
+serde = "1.0.105"
+serde_json = "1.0.50"
 codec = { path = "../codec" }
