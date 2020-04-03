@@ -21,12 +21,12 @@ extern crate log;
 #[macro_use]
 extern crate wascc_codec;
 
-use wascc_codec::capabilities::{CapabilityProvider, Dispatcher, NullDispatcher};
-use wascc_codec::core::{CapabilityConfiguration, OP_CONFIGURE, OP_REMOVE_ACTOR};
-use wascc_codec::{deserialize, serialize};
 use env_logger;
 use std::collections::HashMap;
 use std::env;
+use wascc_codec::capabilities::{CapabilityProvider, Dispatcher, NullDispatcher};
+use wascc_codec::core::{CapabilityConfiguration, OP_CONFIGURE, OP_REMOVE_ACTOR};
+use wascc_codec::{deserialize, serialize};
 
 use std::error::Error;
 use std::sync::{Arc, RwLock};
@@ -195,10 +195,13 @@ impl AwsLambdaRuntimeClient {
                     Some(event) => event,
                 },
             };
-            if event.request_id().is_none() {
-                warn!("Missing request ID");
-                continue;
-            }
+            let request_id = match event.request_id() {
+                None => {
+                    warn!("Missing request ID");
+                    continue;
+                }
+                Some(request_id) => request_id,
+            };
 
             // Set for the X-Ray SDK.
             if let Some(trace_id) = event.trace_id() {
@@ -214,11 +217,7 @@ impl AwsLambdaRuntimeClient {
                 let buf = serialize(event).unwrap();
                 let lock = self.dispatcher.read().unwrap();
                 lock.dispatch(
-                    &format!(
-                        "{}!{}",
-                        &self.module_id,
-                        codec::OP_HANDLE_EVENT
-                    ),
+                    &format!("{}!{}", &self.module_id, codec::OP_HANDLE_EVENT),
                     &buf,
                 )
             };
@@ -226,8 +225,7 @@ impl AwsLambdaRuntimeClient {
             match handler_resp {
                 Ok(r) => {
                     let r = deserialize::<codec::Response>(r.as_slice()).unwrap();
-                    let invocation_resp = lambda::InvocationResponse::new(r.body)
-                        .request_id(event.request_id().unwrap());
+                    let invocation_resp = lambda::InvocationResponse::new(r.body, request_id);
                     debug!("AwsLambdaRuntimeClient send response");
                     match self
                         .runtime_client
@@ -239,8 +237,7 @@ impl AwsLambdaRuntimeClient {
                 }
                 Err(e) => {
                     error!("Guest failed to handle Lambda event: {}", e);
-                    let invocation_err =
-                        lambda::InvocationError::new(e).request_id(event.request_id().unwrap());
+                    let invocation_err = lambda::InvocationError::new(e, request_id);
                     debug!("AwsLambdaRuntimeClient send error");
                     match self.runtime_client.send_invocation_error(invocation_err) {
                         Ok(_) => {}
