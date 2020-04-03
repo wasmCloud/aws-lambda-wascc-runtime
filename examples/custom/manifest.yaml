@@ -2,8 +2,6 @@
 actors:
   - wascc_actor_hello_lambda_signed.wasm
 
-capabilities:
-  # Layers are extracted to the /opt directory in the function execution environment.
-  - /opt/libwascc_log.so
+capabilities: []
 
 config: []

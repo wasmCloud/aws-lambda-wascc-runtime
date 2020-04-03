@@ -26,9 +26,16 @@ use log::{info, warn};
 use std::collections::HashMap;
 use std::env;
 use std::error::Error;
+use wascc_codec::capabilities::CapabilityProvider;
 use wascc_host::{host, HostManifest, NativeCapability};
 
 const MANIFEST_FILE: &str = "manifest.yaml";
+
+/// Represents a waSCC capability that is statically linked into this host.
+struct Capability {
+    id: String,
+    config: HashMap<String, String>,
+}
 
 /// Entry point.
 fn main() -> anyhow::Result<()> {
@@ -43,11 +50,22 @@ fn main() -> anyhow::Result<()> {
 
     info!("aws-lambda-wascc-runtime starting");
 
-    let rt = provider::AwsLambdaRuntimeProvider::new();
-    let cap = NativeCapability::from_instance(rt)
-        .map_err(|e| anyhow!("Failed to create Lambda runtime provider: {}", e))?;
-    host::add_native_capability(cap)
-        .map_err(|e| anyhow!("Failed to load Lambda runtime provider: {}", e))?;
+    let runtime = provider::AwsLambdaRuntimeProvider::new();
+    let logging = wascc_log::LoggingProvider::new();
+
+    let capabilities = vec![
+        Capability {
+            id: runtime.capability_id().into(),
+            config: runtime_provider_config(),
+        },
+        Capability {
+            id: logging.capability_id().into(),
+            config: HashMap::new(), // No configuration.
+        },
+    ];
+
+    add_capability(runtime)?;
+    add_capability(logging)?;
 
     // Load from well-known manifest file and expand any environment variables.
     if let Some(cwd) = std::env::current_dir()?.to_str() {
@@ -57,7 +75,9 @@ fn main() -> anyhow::Result<()> {
         .map_err(|e| anyhow!("Failed to load manifest file: {}", e))?;
     host::apply_manifest(manifest).map_err(|e| anyhow!("Failed to apply manifest: {}", e))?;
 
-    autoconfigure_runtime()?;
+    for capability in capabilities {
+        autoconfigure_actors(capability);
+    }
 
     info!("Main thread park");
     std::thread::park();
@@ -67,9 +87,38 @@ fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Autoconfigures any actors that have the awslambda:runtime capability.
-fn autoconfigure_runtime() -> anyhow::Result<()> {
-    let mut values = HashMap::new();
+/// Adds a built-in capability provider.
+fn add_capability(instance: impl CapabilityProvider) -> anyhow::Result<()> {
+    let id = instance.capability_id();
+    let capability = NativeCapability::from_instance(instance)
+        .map_err(|e| anyhow!("Failed to create native capability {}: {}", id, e))?;
+    host::add_native_capability(capability)
+        .map_err(|e| anyhow!("Failed to load native capability {}: {}", id, e))?;
+
+    Ok(())
+}
+
+/// Autoconfigures any actors that have the specified capability.
+fn autoconfigure_actors(capability: Capability) {
+    for actor in host::actors() {
+        match host::configure(&actor.0, &capability.id, capability.config.clone()) {
+            Ok(_) => info!(
+                "Autoconfigured actor {} for capability {}",
+                actor.0, capability.id
+            ),
+            Err(e) => info!(
+                "Autoconfiguration skipped actor {} for capability {}: {}",
+                actor.0,
+                capability.id,
+                e.description()
+            ),
+        };
+    }
+}
+
+/// Returns the configuration for the Lambda runtime provider.
+fn runtime_provider_config() -> HashMap<String, String> {
+    let mut config = HashMap::new();
     // https://docs.aws.amazon.com/lambda/latest/dg/configuration-envvars.html#configuration-envvars-runtime
     let keys = vec![
         "AWS_LAMBDA_FUNCTION_NAME",
@@ -81,23 +130,12 @@ fn autoconfigure_runtime() -> anyhow::Result<()> {
         "LAMBDA_TASK_ROOT",
     ];
     for key in keys {
-        if let Ok(val) = env::var(key) {
-            values.insert(key.into(), val);
+        if let Ok(value) = env::var(key) {
+            config.insert(key.into(), value);
         } else {
             warn!("Environment variable {} not set", key);
         }
     }
 
-    for actor in host::actors() {
-        match host::configure(&actor.0, provider::CAPABILITY_ID, values.clone()) {
-            Ok(_) => info!("Autoconfigured actor {}", actor.0),
-            Err(e) => info!(
-                "Autoconfiguration skipped actor {}: {}",
-                actor.0,
-                e.description()
-            ),
-        };
-    }
-
-    Ok(())
+    config
 }
