@@ -16,6 +16,7 @@
 // waSCC AWS Lambda Runtime Provider
 //
 
+use reqwest::header::USER_AGENT;
 use serde_json;
 use std::error::Error;
 
@@ -42,6 +43,7 @@ pub struct InvocationError {
 pub struct Client {
     endpoint: String,
     http_client: reqwest::blocking::Client,
+    user_agent: String,
 }
 
 impl Client {
@@ -50,6 +52,7 @@ impl Client {
         Client {
             endpoint: endpoint.into(),
             http_client: reqwest::blocking::Client::new(),
+            user_agent: format!("AWS_Lambda_waSCC/{}", env!("CARGO_PKG_VERSION")),
         }
     }
 
@@ -60,7 +63,11 @@ impl Client {
             "http://{}/2018-06-01/runtime/invocation/next",
             self.endpoint
         );
-        let mut resp = self.http_client.get(&url).send()?;
+        let mut resp = self
+            .http_client
+            .get(&url)
+            .header(USER_AGENT, self.user_agent.clone())
+            .send()?;
         let status = resp.status();
         info!(
             "GET {} {} {}",
@@ -95,6 +102,7 @@ impl Client {
         let resp = self
             .http_client
             .post(&url)
+            .header(USER_AGENT, self.user_agent.clone())
             .json(&serde_json::json!({
                 "errorMessage": error.error.to_string(),
             }))
@@ -117,7 +125,12 @@ impl Client {
             "http://{}/2018-06-01/runtime/invocation/{}/response",
             self.endpoint, resp.request_id
         );
-        let resp = self.http_client.post(&url).body(resp.body).send()?;
+        let resp = self
+            .http_client
+            .post(&url)
+            .header(USER_AGENT, self.user_agent.clone())
+            .body(resp.body)
+            .send()?;
         let status = resp.status();
         info!(
             "POST {} {} {}",
