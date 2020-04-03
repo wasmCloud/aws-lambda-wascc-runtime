@@ -38,16 +38,16 @@ pub struct InvocationError {
     request_id: String,
 }
 
-// Represents an AWS Lambda runtime HTTP client.
-pub struct RuntimeClient {
+// Represents an AWS Lambda runtime client.
+pub struct Client {
     endpoint: String,
     http_client: reqwest::blocking::Client,
 }
 
-impl RuntimeClient {
+impl Client {
     // Creates a new `RuntimeClient` with the specified AWS Lambda runtime API endpoint.
     pub fn new(endpoint: &str) -> Self {
-        RuntimeClient {
+        Client {
             endpoint: endpoint.into(),
             http_client: reqwest::blocking::Client::new(),
         }

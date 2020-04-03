@@ -46,7 +46,7 @@ pub struct AwsLambdaRuntimeProvider {
 
 /// Polls the Lambda event machinery.
 struct Poller {
-    client: lambda::RuntimeClient,
+    client: lambda::Client,
     dispatcher: Arc<RwLock<Box<dyn Dispatcher>>>,
     module_id: String,
     shutdown: Arc<RwLock<HashMap<String, bool>>>,
@@ -165,7 +165,7 @@ impl Poller {
         shutdown: Arc<RwLock<HashMap<String, bool>>>,
     ) -> Self {
         Poller {
-            client: lambda::RuntimeClient::new(endpoint),
+            client: lambda::Client::new(endpoint),
             dispatcher,
             module_id: module_id.into(),
             shutdown,
