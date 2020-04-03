@@ -1,12 +1,12 @@
 [package]
 name = "codec"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["Kit Ewbank <Kit_Ewbank@hotmail.com>"]
 edition = "2018"
 license = "Apache-2.0"
 readme = "README.md"
 
 [dependencies]
-serde = "1.0.104"
-serde_derive = "1.0.104"
-serde_json = "1.0.48"
+serde = "1.0.105"
+serde_derive = "1.0.105"
+serde_json = "1.0.50"
