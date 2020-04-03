@@ -9,6 +9,7 @@ readme = "README.md"
 [dependencies]
 env_logger = "0.7.1"
 log = "0.4.8"
+anyhow = "1.0.28"
 provider = { path = "../provider" }
 wascc-host = { version = "0.5.3", features = ["manifest", "gantry"] }
 
