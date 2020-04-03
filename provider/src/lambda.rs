@@ -16,51 +16,58 @@
 // waSCC AWS Lambda Runtime Provider
 //
 
+use reqwest::header::USER_AGENT;
 use serde_json;
 use std::error::Error;
 
-// Represents an invocation event.
-pub struct InvocationEvent {
+/// Represents an invocation event.
+pub(crate) struct InvocationEvent {
     body: Vec<u8>,
     request_id: Option<String>,
     trace_id: Option<String>,
 }
 
-// Represents an invocation response.
-pub struct InvocationResponse {
+/// Represents an invocation response.
+pub(crate) struct InvocationResponse {
     body: Vec<u8>,
     request_id: String,
 }
 
-// Represents an invocation error.
-pub struct InvocationError {
+/// Represents an invocation error.
+pub(crate) struct InvocationError {
     error: Box<dyn Error>,
     request_id: String,
 }
 
-// Represents an AWS Lambda runtime HTTP client.
-pub struct RuntimeClient {
+/// Represents an AWS Lambda runtime client.
+pub(crate) struct Client {
     endpoint: String,
     http_client: reqwest::blocking::Client,
+    user_agent: String,
 }
 
-impl RuntimeClient {
-    // Creates a new `RuntimeClient` with the specified AWS Lambda runtime API endpoint.
+impl Client {
+    /// Creates a new `RuntimeClient` with the specified AWS Lambda runtime API endpoint.
     pub fn new(endpoint: &str) -> Self {
-        RuntimeClient {
+        Client {
             endpoint: endpoint.into(),
             http_client: reqwest::blocking::Client::new(),
+            user_agent: format!("AWS_Lambda_waSCC/{}", env!("CARGO_PKG_VERSION")),
         }
     }
 
-    // Returns the next AWS Lambda invocation event.
-    pub fn next_invocation_event(&self) -> Result<Option<InvocationEvent>, Box<dyn Error>> {
+    /// Returns the next AWS Lambda invocation event.
+    pub fn next_invocation_event(&self) -> anyhow::Result<Option<InvocationEvent>> {
         // https://docs.aws.amazon.com/lambda/latest/dg/runtimes-api.html#runtimes-api-next
         let url = format!(
             "http://{}/2018-06-01/runtime/invocation/next",
             self.endpoint
         );
-        let mut resp = self.http_client.get(&url).send()?;
+        let mut resp = self
+            .http_client
+            .get(&url)
+            .header(USER_AGENT, self.user_agent.clone())
+            .send()?;
         let status = resp.status();
         info!(
             "GET {} {} {}",
@@ -85,8 +92,8 @@ impl RuntimeClient {
         Ok(Some(event))
     }
 
-    // Sends an invocation error to the AWS Lambda runtime.
-    pub fn send_invocation_error(&self, error: InvocationError) -> Result<(), Box<dyn Error>> {
+    /// Sends an invocation error to the AWS Lambda runtime.
+    pub fn send_invocation_error(&self, error: InvocationError) -> anyhow::Result<()> {
         // https://docs.aws.amazon.com/lambda/latest/dg/runtimes-api.html#runtimes-api-invokeerror
         let url = format!(
             "http://{}/2018-06-01/runtime/invocation/{}/error",
@@ -95,6 +102,7 @@ impl RuntimeClient {
         let resp = self
             .http_client
             .post(&url)
+            .header(USER_AGENT, self.user_agent.clone())
             .json(&serde_json::json!({
                 "errorMessage": error.error.to_string(),
             }))
@@ -110,14 +118,19 @@ impl RuntimeClient {
         Ok(())
     }
 
-    // Sends an invocation response to the AWS Lambda runtime.
-    pub fn send_invocation_response(&self, resp: InvocationResponse) -> Result<(), Box<dyn Error>> {
+    /// Sends an invocation response to the AWS Lambda runtime.
+    pub fn send_invocation_response(&self, resp: InvocationResponse) -> anyhow::Result<()> {
         // https://docs.aws.amazon.com/lambda/latest/dg/runtimes-api.html#runtimes-api-response
         let url = format!(
             "http://{}/2018-06-01/runtime/invocation/{}/response",
             self.endpoint, resp.request_id
         );
-        let resp = self.http_client.post(&url).body(resp.body).send()?;
+        let resp = self
+            .http_client
+            .post(&url)
+            .header(USER_AGENT, self.user_agent.clone())
+            .body(resp.body)
+            .send()?;
         let status = resp.status();
         info!(
             "POST {} {} {}",
@@ -131,7 +144,7 @@ impl RuntimeClient {
 }
 
 impl InvocationEvent {
-    // Creates a new `InvocationEvent` with the specified body.
+    /// Creates a new `InvocationEvent` with the specified body.
     pub fn new(body: Vec<u8>) -> Self {
         InvocationEvent {
             body: body,
@@ -140,17 +153,17 @@ impl InvocationEvent {
         }
     }
 
-    // Returns the event body.
+    /// Returns the event body.
     pub fn body(&self) -> &Vec<u8> {
         self.body.as_ref()
     }
 
-    // Returns any request ID.
+    /// Returns any request ID.
     pub fn request_id(&self) -> Option<&str> {
         self.request_id.as_deref()
     }
 
-    // Returns any trace ID.
+    /// Returns any trace ID.
     pub fn trace_id(&self) -> Option<&str> {
         self.trace_id.as_deref()
     }

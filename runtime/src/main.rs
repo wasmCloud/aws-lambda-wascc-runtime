@@ -16,6 +16,9 @@
 // waSCC AWS Lambda Runtime
 //
 
+#[macro_use]
+extern crate anyhow;
+
 extern crate provider;
 
 use env_logger;
@@ -28,7 +31,7 @@ use wascc_host::{host, HostManifest, NativeCapability};
 const MANIFEST_FILE: &str = "manifest.yaml";
 
 /// Entry point.
-fn main() -> Result<(), Box<dyn Error>> {
+fn main() -> anyhow::Result<()> {
     // No timestamp in the log format as CloudWatch already adds it.
     if env_logger::builder()
         .format_timestamp(None)
@@ -41,15 +44,18 @@ fn main() -> Result<(), Box<dyn Error>> {
     info!("aws-lambda-wascc-runtime starting");
 
     let rt = provider::AwsLambdaRuntimeProvider::new();
-    host::add_native_capability(NativeCapability::from_instance(rt)?)?;
+    let cap = NativeCapability::from_instance(rt)
+        .map_err(|e| anyhow!("Failed to create Lambda runtime provider: {}", e))?;
+    host::add_native_capability(cap)
+        .map_err(|e| anyhow!("Failed to load Lambda runtime provider: {}", e))?;
 
+    // Load from well-known manifest file and expand any environment variables.
     if let Some(cwd) = std::env::current_dir()?.to_str() {
         info!("Loading {} from {}", MANIFEST_FILE, cwd);
     }
-
-    // Load from well-known manifest file and expand any environment variables.
-    let manifest = HostManifest::from_yaml(MANIFEST_FILE, true)?;
-    host::apply_manifest(manifest)?;
+    let manifest = HostManifest::from_yaml(MANIFEST_FILE, true)
+        .map_err(|e| anyhow!("Failed to load manifest file: {}", e))?;
+    host::apply_manifest(manifest).map_err(|e| anyhow!("Failed to apply manifest: {}", e))?;
 
     autoconfigure_runtime()?;
 
@@ -62,7 +68,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 }
 
 /// Autoconfigures any actors that have the awslambda:runtime capability.
-fn autoconfigure_runtime() -> Result<(), Box<dyn Error>> {
+fn autoconfigure_runtime() -> anyhow::Result<()> {
     let mut values = HashMap::new();
     // https://docs.aws.amazon.com/lambda/latest/dg/configuration-envvars.html#configuration-envvars-runtime
     let keys = vec![

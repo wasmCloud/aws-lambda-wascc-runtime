@@ -17,6 +17,8 @@
 //
 
 #[macro_use]
+extern crate anyhow;
+#[macro_use]
 extern crate log;
 #[macro_use]
 extern crate wascc_codec;
@@ -46,7 +48,7 @@ pub struct AwsLambdaRuntimeProvider {
 
 /// Polls the Lambda event machinery.
 struct Poller {
-    client: lambda::RuntimeClient,
+    client: lambda::Client,
     dispatcher: Arc<RwLock<Box<dyn Dispatcher>>>,
     module_id: String,
     shutdown: Arc<RwLock<HashMap<String, bool>>>,
@@ -73,13 +75,17 @@ impl AwsLambdaRuntimeProvider {
     }
 
     /// Starts polling the Lambda event machinery.
-    fn start_polling(&self, config: CapabilityConfiguration) -> Result<(), Box<dyn Error>> {
+    fn start_polling(&self, config: CapabilityConfiguration) -> anyhow::Result<()> {
         info!("awslambda:runtime start_polling");
 
         let dispatcher = Arc::clone(&self.dispatcher);
         let endpoint = match config.values.get("AWS_LAMBDA_RUNTIME_API") {
             Some(ep) => String::from(ep),
-            None => return Err("Missing configuration value: AWS_LAMBDA_RUNTIME_API".into()),
+            None => {
+                return Err(anyhow!(
+                    "Missing configuration value: AWS_LAMBDA_RUNTIME_API"
+                ))
+            }
         };
         let module_id = config.module;
         let shutdown = Arc::clone(&self.shutdown);
@@ -97,7 +103,7 @@ impl AwsLambdaRuntimeProvider {
     }
 
     /// Stops any running Lambda poller.
-    fn stop_polling(&self, config: CapabilityConfiguration) -> Result<(), Box<dyn Error>> {
+    fn stop_polling(&self, config: CapabilityConfiguration) -> anyhow::Result<()> {
         info!("awslambda:runtime stop_polling");
 
         let module_id = &config.module;
@@ -165,7 +171,7 @@ impl Poller {
         shutdown: Arc<RwLock<HashMap<String, bool>>>,
     ) -> Self {
         Poller {
-            client: lambda::RuntimeClient::new(endpoint),
+            client: lambda::Client::new(endpoint),
             dispatcher,
             module_id: module_id.into(),
             shutdown,
