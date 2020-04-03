@@ -30,7 +30,11 @@ const MANIFEST_FILE: &str = "manifest.yaml";
 /// Entry point.
 fn main() -> Result<(), Box<dyn Error>> {
     // No timestamp in the log format as CloudWatch already adds it.
-    if env_logger::builder().format_timestamp(None).try_init().is_err() {
+    if env_logger::builder()
+        .format_timestamp(None)
+        .try_init()
+        .is_err()
+    {
         info!("Logger already intialized");
     }
 
