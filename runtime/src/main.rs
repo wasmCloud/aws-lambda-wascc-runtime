@@ -26,7 +26,7 @@ use log::{info, warn};
 use std::collections::HashMap;
 use std::env;
 use std::error::Error;
-use wascc_host::{host, HostManifest, NativeCapability};
+use wascc_host::{HostManifest, NativeCapability, WasccHost};
 
 const MANIFEST_FILE: &str = "manifest.yaml";
 
@@ -43,10 +43,12 @@ fn main() -> anyhow::Result<()> {
 
     info!("aws-lambda-wascc-runtime starting");
 
+    let host = WasccHost::new();
+
     let rt = provider::AwsLambdaRuntimeProvider::new();
-    let cap = NativeCapability::from_instance(rt)
+    let cap = NativeCapability::from_instance(rt, None)
         .map_err(|e| anyhow!("Failed to create Lambda runtime provider: {}", e))?;
-    host::add_native_capability(cap)
+    host.add_native_capability(cap)
         .map_err(|e| anyhow!("Failed to load Lambda runtime provider: {}", e))?;
 
     // Load from well-known manifest file and expand any environment variables.
@@ -55,9 +57,10 @@ fn main() -> anyhow::Result<()> {
     }
     let manifest = HostManifest::from_yaml(MANIFEST_FILE, true)
         .map_err(|e| anyhow!("Failed to load manifest file: {}", e))?;
-    host::apply_manifest(manifest).map_err(|e| anyhow!("Failed to apply manifest: {}", e))?;
+    host.apply_manifest(manifest)
+        .map_err(|e| anyhow!("Failed to apply manifest: {}", e))?;
 
-    autoconfigure_runtime()?;
+    autoconfigure_runtime(&host)?;
 
     info!("Main thread park");
     std::thread::park();
@@ -68,7 +71,7 @@ fn main() -> anyhow::Result<()> {
 }
 
 /// Autoconfigures any actors that have the awslambda:runtime capability.
-fn autoconfigure_runtime() -> anyhow::Result<()> {
+fn autoconfigure_runtime(host: &WasccHost) -> anyhow::Result<()> {
     let mut values = HashMap::new();
     // https://docs.aws.amazon.com/lambda/latest/dg/configuration-envvars.html#configuration-envvars-runtime
     let keys = vec![
@@ -88,8 +91,8 @@ fn autoconfigure_runtime() -> anyhow::Result<()> {
         }
     }
 
-    for actor in host::actors() {
-        match host::configure(&actor.0, provider::CAPABILITY_ID, values.clone()) {
+    for actor in host.actors() {
+        match host.bind_actor(&actor.0, provider::CAPABILITY_ID, None, values.clone()) {
             Ok(_) => info!("Autoconfigured actor {}", actor.0),
             Err(e) => info!(
                 "Autoconfiguration skipped actor {}: {}",
