@@ -19,49 +19,24 @@
 #[macro_use]
 extern crate log;
 
-extern crate aws_lambda_runtime_codec as runtime_codec;
-extern crate wascc_actor as actor;
+// To avoid conflict with wascc_codec which is aliased as codec in the actor SDK prelude.
+extern crate codec as lambda_codec;
 
-use actor::prelude::*;
-use aws_lambda_events::event::apigw;
-use serde_json;
 use serde_json::json;
+use wascc_actor::prelude::*;
 
-actor_handlers! {runtime_codec::lambda::OP_HANDLE_EVENT => handle_event, core::OP_HEALTH_REQUEST => health}
+actor_handlers! {lambda_codec::OP_HANDLE_EVENT => handle_event, codec::core::OP_HEALTH_REQUEST => health}
 
-fn health(_ctx: &CapabilitiesContext, _req: core::HealthRequest) -> ReceiveResult {
+fn health(_req: codec::core::HealthRequest) -> ReceiveResult {
     info!("Actor health");
 
     Ok(vec![])
 }
 
-fn handle_event(
-    ctx: &CapabilitiesContext,
-    event: aws_lambda_runtime_codec::lambda::Event,
-) -> ReceiveResult {
+fn handle_event(event: lambda_codec::Event) -> ReceiveResult {
     info!("Actor handle event");
 
-    let body = event.body;
-
-    // Is this a request from API Gateway?
-    match serde_json::from_slice(&body) {
-        Ok(r) => return handle_apigw_proxy_request(ctx, r),
-        _ => {}
-    }
-
-    handle_custom_event(ctx, body)
-}
-
-fn handle_apigw_proxy_request(_ctx: &CapabilitiesContext, _request: apigw::ApiGatewayProxyRequest) -> ReceiveResult {
-    info!("Handle API Gateway proxy event");
-
-    Ok(serialize(runtime_codec::lambda::Response::empty())?)
-}
-
-fn handle_custom_event(_ctx: &CapabilitiesContext, body: Vec<u8>) -> ReceiveResult {
-    info!("Handle custom event");
-
-    let output: String = match serde_json::from_slice(&body)? {
+    let output: String = match serde_json::from_slice(event.body.as_slice())? {
         serde_json::Value::Object(m) => {
             let mut output: String = "Unknown".into();
             if let Some(input) = m.get("input") {
@@ -79,7 +54,5 @@ fn handle_custom_event(_ctx: &CapabilitiesContext, body: Vec<u8>) -> ReceiveResu
 
     info!("Output: {}", &output);
 
-    Ok(serialize(runtime_codec::lambda::Response::json(
-        &response,
-    )?)?)
+    Ok(serialize(lambda_codec::Response::json(&response)?)?)
 }
