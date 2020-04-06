@@ -23,7 +23,9 @@ extern crate log;
 #[macro_use]
 extern crate wascc_codec;
 
+use aws_lambda_events::event::alb::AlbTargetGroupRequest;
 use env_logger;
+use serde_json;
 use std::collections::HashMap;
 use std::env;
 use wascc_codec::capabilities::{CapabilityProvider, Dispatcher, NullDispatcher};
@@ -188,18 +190,21 @@ impl Poller {
             // Get next event.
             debug!("Poller get next event");
             let event = match self.client.next_invocation_event() {
-                Err(err) => {
-                    error!("{}", err);
+                Err(e) => {
+                    error!("{}", e);
                     continue;
                 }
                 Ok(evt) => match evt {
-                    None => continue,
+                    None => {
+                        warn!("No event");
+                        continue;
+                    }
                     Some(event) => event,
                 },
             };
             let request_id = match event.request_id() {
                 None => {
-                    warn!("Missing request ID");
+                    warn!("No request ID");
                     continue;
                 }
                 Some(request_id) => request_id,
@@ -210,17 +215,23 @@ impl Poller {
                 env::set_var("_X_AMZN_TRACE_ID", trace_id);
             }
 
+            // Check for HTTP requests.
+            let msg = match self.actor_message(event.body()) {
+                Ok(msg) => msg,
+                Err(e) => {
+                    // TODO Should POST to invocation error endpoint.
+                    error!("{}", e);
+                    continue;
+                }
+            };
+
             // Call handler.
             debug!("Poller call handler");
             let handler_resp = {
-                let event = codec::Event {
-                    body: event.body().to_vec(),
-                };
-                let buf = serialize(event).unwrap();
                 let lock = self.dispatcher.read().unwrap();
                 lock.dispatch(
                     &format!("{}!{}", &self.module_id, codec::OP_HANDLE_EVENT),
-                    &buf,
+                    &msg,
                 )
             };
             // Handle response or error.
@@ -250,5 +261,25 @@ impl Poller {
     // Returns whether the shutdown flag is set.
     fn shutdown(&self) -> bool {
         *self.shutdown.read().unwrap().get(&self.module_id).unwrap()
+    }
+
+    /// Returns the message to be dispatched to the target actor.
+    fn actor_message(&self, body: &Vec<u8>) -> anyhow::Result<Vec<u8>> {
+        match serde_json::from_slice(body) {
+            Ok(r) => return self.serialize_alb(r),
+            _ => {}
+        }
+
+        let event = codec::Event {
+            body: body.to_vec(),
+        };
+        let buf =
+            serialize(event).map_err(|e| anyhow!("Failed to serialize actor message: {}", e))?;
+
+        Ok(buf)
+    }
+
+    fn serialize_alb(&self, req: AlbTargetGroupRequest) -> anyhow::Result<Vec<u8>> {
+        Ok(vec![])
     }
 }
