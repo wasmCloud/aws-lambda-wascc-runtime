@@ -34,7 +34,7 @@ use std::thread;
 
 mod lambda;
 
-pub const CAPABILITY_ID: &str = "awslambda:runtime";
+const CAPABILITY_ID: &str = "awslambda:runtime";
 
 /// Represents a waSCC AWS Lambda runtime provider.
 pub struct AwsLambdaRuntimeProvider {
