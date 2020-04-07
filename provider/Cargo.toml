@@ -1,6 +1,6 @@
 [package]
 name = "provider"
-version = "0.1.1"
+version = "0.6.0"
 authors = ["Kit Ewbank <Kit_Ewbank@hotmail.com>"]
 edition = "2018"
 license = "Apache-2.0"
@@ -10,7 +10,7 @@ readme = "README.md"
 env_logger = "0.7.1"
 log = "0.4.8"
 anyhow = "1.0.28"
-wascc-codec = "0.5.2"
+wascc-codec = "0.6.0"
 reqwest = { version = "0.10.4", features = ["blocking", "json"] }
 serde = "1.0.105"
 serde_json = "1.0.50"

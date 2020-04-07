@@ -20,8 +20,6 @@
 extern crate anyhow;
 #[macro_use]
 extern crate log;
-#[macro_use]
-extern crate wascc_codec;
 
 use aws_lambda_events::event::alb::AlbTargetGroupRequest;
 use env_logger;
@@ -29,7 +27,7 @@ use serde_json;
 use std::collections::HashMap;
 use std::env;
 use wascc_codec::capabilities::{CapabilityProvider, Dispatcher, NullDispatcher};
-use wascc_codec::core::{CapabilityConfiguration, OP_CONFIGURE, OP_REMOVE_ACTOR};
+use wascc_codec::core::{CapabilityConfiguration, OP_BIND_ACTOR, OP_REMOVE_ACTOR};
 use wascc_codec::{deserialize, serialize};
 
 use std::error::Error;
@@ -38,9 +36,7 @@ use std::thread;
 
 mod lambda;
 
-pub const CAPABILITY_ID: &str = "awslambda:runtime";
-
-capability_provider!(AwsLambdaRuntimeProvider, AwsLambdaRuntimeProvider::new);
+const CAPABILITY_ID: &str = "awslambda:runtime";
 
 /// Represents a waSCC AWS Lambda runtime provider.
 pub struct AwsLambdaRuntimeProvider {
@@ -60,7 +56,7 @@ impl Default for AwsLambdaRuntimeProvider {
     // Returns the default value for `AwsLambdaRuntimeProvider`.
     fn default() -> Self {
         if env_logger::try_init().is_err() {
-            info!("Logger already intialized");
+            debug!("Logger already intialized");
         }
 
         AwsLambdaRuntimeProvider {
@@ -78,7 +74,7 @@ impl AwsLambdaRuntimeProvider {
 
     /// Starts polling the Lambda event machinery.
     fn start_polling(&self, config: CapabilityConfiguration) -> anyhow::Result<()> {
-        info!("awslambda:runtime start_polling");
+        debug!("awslambda:runtime start_polling");
 
         let dispatcher = Arc::clone(&self.dispatcher);
         let endpoint = match config.values.get("AWS_LAMBDA_RUNTIME_API") {
@@ -106,7 +102,7 @@ impl AwsLambdaRuntimeProvider {
 
     /// Stops any running Lambda poller.
     fn stop_polling(&self, config: CapabilityConfiguration) -> anyhow::Result<()> {
-        info!("awslambda:runtime stop_polling");
+        debug!("awslambda:runtime stop_polling");
 
         let module_id = &config.module;
         {
@@ -137,7 +133,7 @@ impl CapabilityProvider for AwsLambdaRuntimeProvider {
 
     /// Called when the host runtime is ready and has configured a dispatcher.
     fn configure_dispatch(&self, dispatcher: Box<dyn Dispatcher>) -> Result<(), Box<dyn Error>> {
-        info!("awslambda:runtime configure_dispatch");
+        debug!("awslambda:runtime configure_dispatch");
 
         let mut lock = self.dispatcher.write().unwrap();
         *lock = dispatcher;
@@ -150,7 +146,7 @@ impl CapabilityProvider for AwsLambdaRuntimeProvider {
         info!("awslambda:runtime handle_call `{}` from `{}`", op, actor);
 
         match op {
-            OP_CONFIGURE if actor == "system" => self.start_polling(deserialize(msg)?)?,
+            OP_BIND_ACTOR if actor == "system" => self.start_polling(deserialize(msg)?)?,
             OP_REMOVE_ACTOR if actor == "system" => self.stop_polling(deserialize(msg)?)?,
             _ => return Err(format!("Unsupported operation: {}", op).into()),
         }
@@ -229,10 +225,7 @@ impl Poller {
             debug!("Poller call handler");
             let handler_resp = {
                 let lock = self.dispatcher.read().unwrap();
-                lock.dispatch(
-                    &format!("{}!{}", &self.module_id, codec::OP_HANDLE_EVENT),
-                    &msg,
-                )
+                lock.dispatch(&self.module_id, codec::OP_HANDLE_EVENT, &msg)
             };
             // Handle response or error.
             match handler_resp {

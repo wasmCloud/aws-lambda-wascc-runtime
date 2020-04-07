@@ -23,14 +23,18 @@ pub const OP_HANDLE_EVENT: &str = "HandleEvent";
 /// Describes an event received from AWS Lambda.
 #[derive(Debug, PartialEq, Deserialize, Serialize)]
 pub struct Event {
-    /// JSON.
+    /// The raw JSON bytes of the event body.
+    #[serde(with = "serde_bytes")]
+    #[serde(default)]
     pub body: Vec<u8>,
 }
 
 /// Describes a response to AWS Lambda.
 #[derive(Debug, PartialEq, Deserialize, Serialize)]
 pub struct Response {
-    /// JSON.
+    /// The raw JSON bytes of the response body.
+    #[serde(with = "serde_bytes")]
+    #[serde(default)]
     pub body: Vec<u8>,
 }
 
