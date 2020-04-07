@@ -211,68 +211,93 @@ impl Poller {
                 env::set_var("_X_AMZN_TRACE_ID", trace_id);
             }
 
-            // Check for HTTP requests.
-            let msg = match self.actor_message(event.body()) {
-                Ok(msg) => msg,
-                Err(e) => {
-                    // TODO Should POST to invocation error endpoint.
-                    error!("{}", e);
-                    continue;
-                }
-            };
-
-            // Call handler.
-            debug!("Poller call handler");
-            let handler_resp = {
-                let lock = self.dispatcher.read().unwrap();
-                lock.dispatch(&self.module_id, codec::OP_HANDLE_EVENT, &msg)
-            };
-            // Handle response or error.
-            match handler_resp {
-                Ok(r) => {
-                    let r = deserialize::<codec::Response>(r.as_slice()).unwrap();
-                    let resp = lambda::InvocationResponse::new(r.body, request_id);
-                    debug!("Poller send response");
-                    match self.client.send_invocation_response(resp) {
-                        Ok(_) => {}
-                        Err(e) => error!("Unable to send invocation response: {}", e),
-                    }
-                }
-                Err(e) => {
-                    error!("Guest failed to handle Lambda event: {}", e);
-                    let err = lambda::InvocationError::new(e, request_id);
-                    debug!("Poller send error");
-                    match self.client.send_invocation_error(err) {
-                        Ok(_) => {}
-                        Err(e) => error!("Unable to send invocation error: {}", e),
-                    }
-                }
+            // Try first to dispatch as an HTTP request.
+            if self.try_dispatch_http_request(event.body(), request_id) {
+                continue;
             }
+
+            self.dispatch_lambda_event(event.body(), request_id);
         }
     }
 
-    // Returns whether the shutdown flag is set.
+    /// Sends an invocation error.
+    fn send_invocation_error(&self, e: anyhow::Error, request_id: &str) {
+        let err = lambda::InvocationError::new(e, request_id);
+        debug!("Poller send error");
+        match self.client.send_invocation_error(err) {
+            Ok(_) => {}
+            Err(e) => error!("Unable to send invocation error: {}", e),
+        }
+    }
+
+    /// Sends an invocation response.
+    fn send_invocation_response(&self, body: Vec<u8>, request_id: &str) {
+        let resp = lambda::InvocationResponse::new(body, request_id);
+        debug!("Poller send response");
+        match self.client.send_invocation_response(resp) {
+            Ok(_) => {}
+            Err(e) => error!("Unable to send invocation response: {}", e),
+        }
+    }
+
+    /// Returns whether the shutdown flag is set.
     fn shutdown(&self) -> bool {
         *self.shutdown.read().unwrap().get(&self.module_id).unwrap()
     }
 
-    /// Returns the message to be dispatched to the target actor.
-    fn actor_message(&self, body: &Vec<u8>) -> anyhow::Result<Vec<u8>> {
+    /// Attempts to dispatch an HTTP request to an actor.
+    fn try_dispatch_http_request(&self, body: &Vec<u8>, request_id: &str) -> bool {
         match serde_json::from_slice(body) {
-            Ok(r) => return self.serialize_alb(r),
+            Ok(request) => return self.dispatch_alb_http_request(request, request_id),
             _ => {}
         }
 
+        false
+    }
+
+    /// Dispatches a Lambda event to an actor.
+    fn dispatch_lambda_event(&self, body: &Vec<u8>, request_id: &str) {
         let event = codec::Event {
             body: body.to_vec(),
         };
-        let buf =
-            serialize(event).map_err(|e| anyhow!("Failed to serialize actor message: {}", e))?;
+        let msg = match serialize(event) {
+            Ok(msg) => msg,
+            Err(e) => {
+                let err = anyhow!("Failed to serialize actor message: {}", e);
+                error!("{}", err);
+                self.send_invocation_error(err, request_id);
 
-        Ok(buf)
+                return;
+            }
+        };
+
+        // Call handler.
+        debug!("Poller call handler");
+        let handler_resp = {
+            let lock = self.dispatcher.read().unwrap();
+            lock.dispatch(&self.module_id, codec::OP_HANDLE_EVENT, &msg)
+        };
+        // Handle response or error.
+        match handler_resp {
+            Ok(r) => {
+                let resp = deserialize::<codec::Response>(r.as_slice()).unwrap();
+                self.send_invocation_response(resp.body, request_id);
+            }
+            Err(e) => {
+                let err = anyhow!("Guest failed to handle Lambda event: {}", e);
+                error!("{}", err);
+                self.send_invocation_error(err, request_id);
+            }
+        }
     }
 
-    fn serialize_alb(&self, req: AlbTargetGroupRequest) -> anyhow::Result<Vec<u8>> {
-        Ok(vec![])
+    /// Dispatches an ALB HTTP request to an actor.
+    fn dispatch_alb_http_request(&self, request: AlbTargetGroupRequest, request_id: &str) -> bool {
+        true
+    }
+
+    /// Dispatches an HTTP request to an actor.
+    fn dispatch_http_request(&self, request: wascc_codec::http::Request, request_id: &str) -> bool {
+        true
     }
 }

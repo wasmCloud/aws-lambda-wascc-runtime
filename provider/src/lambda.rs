@@ -18,7 +18,6 @@
 
 use reqwest::header::USER_AGENT;
 use serde_json;
-use std::error::Error;
 
 /// Represents an invocation event.
 pub(crate) struct InvocationEvent {
@@ -35,7 +34,7 @@ pub(crate) struct InvocationResponse {
 
 /// Represents an invocation error.
 pub(crate) struct InvocationError {
-    error: Box<dyn Error>,
+    error: anyhow::Error,
     request_id: String,
 }
 
@@ -181,7 +180,7 @@ impl InvocationResponse {
 
 impl InvocationError {
     /// Creates a new `InvocationError` with the specified error and request ID.
-    pub fn new(error: Box<dyn Error>, request_id: &str) -> Self {
+    pub fn new(error: anyhow::Error, request_id: &str) -> Self {
         InvocationError {
             error: error,
             request_id: request_id.into(),
