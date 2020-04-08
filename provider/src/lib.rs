@@ -21,10 +21,10 @@ extern crate anyhow;
 #[macro_use]
 extern crate log;
 
-use aws_lambda_events::event::alb::AlbTargetGroupRequest;
+use aws_lambda_events::event::alb::{AlbTargetGroupRequest, AlbTargetGroupResponse};
 use env_logger;
 use serde_json;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::env;
 use wascc_codec::capabilities::{CapabilityProvider, Dispatcher, NullDispatcher};
 use wascc_codec::core::{CapabilityConfiguration, OP_BIND_ACTOR, OP_REMOVE_ACTOR};
@@ -50,6 +50,7 @@ struct Poller {
     dispatcher: Arc<RwLock<Box<dyn Dispatcher>>>,
     module_id: String,
     shutdown: Arc<RwLock<HashMap<String, bool>>>,
+    dispatched: HashSet<String>,
 }
 
 impl Default for AwsLambdaRuntimeProvider {
@@ -93,7 +94,7 @@ impl AwsLambdaRuntimeProvider {
             // Initialize this poller's shutdown flag.
             shutdown.write().unwrap().insert(module_id.clone(), false);
 
-            let poller = Poller::new(&module_id, &endpoint, dispatcher, shutdown);
+            let mut poller = Poller::new(&module_id, &endpoint, dispatcher, shutdown);
             poller.run();
         });
 
@@ -173,11 +174,12 @@ impl Poller {
             dispatcher,
             module_id: module_id.into(),
             shutdown,
+            dispatched: HashSet::new(),
         }
     }
 
     /// Runs the poller until shutdown.
-    fn run(&self) {
+    fn run(&mut self) {
         loop {
             if self.shutdown() {
                 break;
@@ -211,12 +213,42 @@ impl Poller {
                 env::set_var("_X_AMZN_TRACE_ID", trace_id);
             }
 
-            // Try first to dispatch as an HTTP request.
-            if self.try_dispatch_http_request(event.body(), request_id) {
-                continue;
+            if self.dispatched.contains(request_id) {
+                self.send_invocation_error(
+                    anyhow!("Already dispatched: {}", request_id),
+                    request_id,
+                );
             }
 
-            self.dispatch_lambda_event(event.body(), request_id);
+            // Try first to dispatch as an HTTP request.
+            match self.try_dispatch_http_request(event.body(), request_id) {
+                // The event couldn't be converted into an HTTP request.
+                // Dispatch as a Lambda raw event.
+                Ok(body) if body.is_empty() => {}
+                // The event could be converted to an HTTP request and was dispatched succesfully.
+                Ok(body) => {
+                    self.send_invocation_response(body, request_id);
+                    continue;
+                }
+                // The event could be converted to an HTTP request and was
+                // dispatched succesfully but there was an error after dispatch.
+                Err(e) if self.dispatched.contains(request_id) => {
+                    error!("{}", e);
+                    self.send_invocation_error(e, request_id);
+                    continue;
+                }
+                // The event could be converted to an HTTP request but wasn't dispatched succesfully.
+                // Dispatch as a Lambda raw event.
+                Err(e) => warn!("{}", e),
+            };
+
+            match self.try_dispatch_lambda_event(event.body(), request_id) {
+                Ok(body) => self.send_invocation_response(body, request_id),
+                Err(e) => {
+                    error!("{}", e);
+                    self.send_invocation_error(e, request_id)
+                }
+            }
         }
     }
 
@@ -246,33 +278,39 @@ impl Poller {
     }
 
     /// Attempts to dispatch an HTTP request to an actor.
-    fn try_dispatch_http_request(&self, body: &Vec<u8>, request_id: &str) -> bool {
+    fn try_dispatch_http_request(
+        &mut self,
+        body: &Vec<u8>,
+        request_id: &str,
+    ) -> anyhow::Result<Vec<u8>> {
         match serde_json::from_slice(body) {
-            Ok(request) => return self.dispatch_alb_http_request(request, request_id),
+            Ok(request) => {
+                let response = self.dispatch_alb_http_request(request, request_id)?;
+                return serde_json::to_vec(&response)
+                    .map_err(|e| anyhow!("Failed to serialize ALB response: {}", e));
+            }
             _ => {}
-        }
+        };
 
-        false
+        Ok(vec![])
     }
 
-    /// Dispatches a Lambda event to an actor.
-    fn dispatch_lambda_event(&self, body: &Vec<u8>, request_id: &str) {
+    /// Attempts to dispatch a Lambda raw event to an actor.
+    fn try_dispatch_lambda_event(
+        &mut self,
+        body: &Vec<u8>,
+        request_id: &str,
+    ) -> anyhow::Result<Vec<u8>> {
         let event = codec::Event {
             body: body.to_vec(),
         };
         let msg = match serialize(event) {
             Ok(msg) => msg,
-            Err(e) => {
-                let err = anyhow!("Failed to serialize actor message: {}", e);
-                error!("{}", err);
-                self.send_invocation_error(err, request_id);
-
-                return;
-            }
+            Err(e) => return Err(anyhow!("Failed to serialize Lambda raw event: {}", e)),
         };
 
         // Call handler.
-        debug!("Poller call handler");
+        info!("Poller dispatch Lambda raw event");
         let handler_resp = {
             let lock = self.dispatcher.read().unwrap();
             lock.dispatch(&self.module_id, codec::OP_HANDLE_EVENT, &msg)
@@ -280,24 +318,82 @@ impl Poller {
         // Handle response or error.
         match handler_resp {
             Ok(r) => {
-                let resp = deserialize::<codec::Response>(r.as_slice()).unwrap();
-                self.send_invocation_response(resp.body, request_id);
+                // Record that the request was dispatched.
+                self.dispatched.insert(request_id.into());
+
+                match deserialize::<codec::Response>(r.as_slice()) {
+                    Ok(resp) => Ok(resp.body),
+                    Err(e) => Err(anyhow!("Failed to deserialize HTTP response: {}", e)),
+                }
             }
-            Err(e) => {
-                let err = anyhow!("Guest failed to handle Lambda event: {}", e);
-                error!("{}", err);
-                self.send_invocation_error(err, request_id);
-            }
+            Err(e) => Err(anyhow!("Guest failed to handle Lambda event: {}", e)),
         }
     }
 
     /// Dispatches an ALB HTTP request to an actor.
-    fn dispatch_alb_http_request(&self, request: AlbTargetGroupRequest, request_id: &str) -> bool {
-        true
+    fn dispatch_alb_http_request(
+        &mut self,
+        request: AlbTargetGroupRequest,
+        request_id: &str,
+    ) -> anyhow::Result<AlbTargetGroupResponse> {
+        let query_string = url::form_urlencoded::Serializer::new(String::new())
+            .extend_pairs(request.query_string_parameters.iter())
+            .finish();
+        let request = wascc_codec::http::Request {
+            method: request
+                .http_method
+                .ok_or(anyhow!("Missing method in ALB request"))?,
+            path: request.path.ok_or(anyhow!("Missing path in ALB request"))?,
+            query_string,
+            header: request.headers,
+            body: match request.body {
+                Some(s) if request.is_base64_encoded => base64::decode(s)?,
+                Some(s) => s.into_bytes(),
+                None => vec![],
+            },
+        };
+
+        info!("Dispatching ALB target group request");
+        let response = self.dispatch_http_request(request, request_id)?;
+        Ok(AlbTargetGroupResponse {
+            status_code: response.status_code as i64,
+            status_description: Some(response.status),
+            headers: response.header,
+            multi_value_headers: HashMap::new(),
+            body: Some(base64::encode(response.body)),
+            is_base64_encoded: true,
+        })
     }
 
     /// Dispatches an HTTP request to an actor.
-    fn dispatch_http_request(&self, request: wascc_codec::http::Request, request_id: &str) -> bool {
-        true
+    fn dispatch_http_request(
+        &mut self,
+        request: wascc_codec::http::Request,
+        request_id: &str,
+    ) -> anyhow::Result<wascc_codec::http::Response> {
+        let msg = match serialize(request) {
+            Ok(msg) => msg,
+            Err(e) => return Err(anyhow!("Failed to serialize HTTP request: {}", e)),
+        };
+
+        // Call handler.
+        info!("Poller dispatch HTTP request");
+        let handler_resp = {
+            let lock = self.dispatcher.read().unwrap();
+            lock.dispatch(&self.module_id, wascc_codec::http::OP_HANDLE_REQUEST, &msg)
+        };
+        // Return response or error.
+        match handler_resp {
+            Ok(resp) => {
+                // Record that the request was dispatched.
+                self.dispatched.insert(request_id.into());
+
+                match deserialize::<wascc_codec::http::Response>(resp.as_slice()) {
+                    Ok(resp) => Ok(resp),
+                    Err(e) => Err(anyhow!("Failed to deserialize HTTP response: {}", e)),
+                }
+            }
+            Err(e) => Err(anyhow!("Guest failed to handle HTTP request: {}", e)),
+        }
     }
 }
