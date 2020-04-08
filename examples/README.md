@@ -9,7 +9,8 @@ Examples of using the [waSCC](https://wascc.dev/) runtime for AWS Lambda.
 
 ## Examples
 
-* [`custom`](custom/README.md) A simple example that processes a custom lambda event
+* [`custom`](custom/README.md) A simple example that processes a custom Lambda event
+* [`apigw`](apigw/README.md) An example that receives an HTTP request via API Gateway
 * [`sqs`](sqs/README.md) Receive an SQS message and publish a reply
 
 ## Notes

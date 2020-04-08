@@ -1,0 +1,7 @@
+.terraform/
+
+terraform.tfstate
+terraform.tfstate.backup
+
+app.zip
+output.json
