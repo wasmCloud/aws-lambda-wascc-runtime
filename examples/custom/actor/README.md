@@ -2,6 +2,20 @@
 
 A sample [waSCC](https://wascc.dev/) actor that uses the AWS Lambda runtime capability provider.
 
+It is based on the [Krustlet uppercase demo](https://github.com/deislabs/krustlet/tree/master/demos/wascc/uppercase), converting its input to uppercase.
+
+Input should be a custom Lambda event with payload a JSON document of the form
+
+```json
+{"input": "Hello world"}
+```
+
+and the corresponding response will be a JSON document of the form
+
+```json
+{"output": "HELLO WORLD"}
+```
+
 ## Build
 
 #### Install [NKeys](https://github.com/encabulators/nkeys)
