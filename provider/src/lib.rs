@@ -33,6 +33,7 @@ use std::error::Error;
 use std::sync::{Arc, RwLock};
 use std::thread;
 
+mod dispatch;
 mod http;
 mod lambda;
 
