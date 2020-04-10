@@ -13,7 +13,7 @@
 // limitations under the License.
 
 //
-// waSCC AWS Lambda Actor
+// Sample actor that uses the AWS Lambda runtime capability provider
 //
 
 #[macro_use]
@@ -27,18 +27,20 @@ use wascc_actor::prelude::*;
 
 actor_handlers! {lambda_codec::OP_HANDLE_EVENT => handle_event, codec::core::OP_HEALTH_REQUEST => health}
 
-fn health(_req: codec::core::HealthRequest) -> ReceiveResult {
+fn health(_req: codec::core::HealthRequest) -> HandlerResult<()> {
     info!("Actor health");
 
-    Ok(vec![])
+    Ok(())
 }
 
-fn handle_event(event: lambda_codec::Event) -> ReceiveResult {
+fn handle_event(event: lambda_codec::Event) -> HandlerResult<lambda_codec::Response> {
     info!("Actor handle event");
+
+    const DEFAULT: &'static str = "**UNKNOWN**";
 
     let output: String = match serde_json::from_slice(event.body.as_slice())? {
         serde_json::Value::Object(m) => {
-            let mut output: String = "Unknown".into();
+            let mut output: String = DEFAULT.into();
             if let Some(input) = m.get("input") {
                 if input.is_string() {
                     output = input.as_str().unwrap().to_uppercase();
@@ -46,7 +48,7 @@ fn handle_event(event: lambda_codec::Event) -> ReceiveResult {
             }
             output
         }
-        _ => "Unknown".into(),
+        _ => DEFAULT.into(),
     };
     let response = json!({
         "output": output,
@@ -54,5 +56,5 @@ fn handle_event(event: lambda_codec::Event) -> ReceiveResult {
 
     info!("Output: {}", &output);
 
-    Ok(serialize(lambda_codec::Response::json(&response)?)?)
+    Ok(lambda_codec::Response::json(&response)?)
 }
