@@ -1,5 +1,9 @@
 # waSCC Runtime for AWS Lambda
 
+:construction: :construction: **This project is highly experimental.** :construction: :construction:
+
+It is not yet ready for production. Use at your own risk.
+
 A [waSCC](https://wascc.dev/) [runtime for AWS Lambda](https://docs.aws.amazon.com/lambda/latest/dg/lambda-runtimes.html).
 
 This workspace includes multiple crates:

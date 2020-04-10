@@ -22,7 +22,6 @@ extern crate anyhow;
 extern crate log;
 
 use aws_lambda_events::event::alb::{AlbTargetGroupRequest, AlbTargetGroupResponse};
-use env_logger;
 use serde_json;
 use std::collections::{HashMap, HashSet};
 use std::env;
@@ -37,6 +36,8 @@ use std::thread;
 mod lambda;
 
 const CAPABILITY_ID: &str = "awslambda:runtime";
+
+// This capability provider is designed to be statically linked into its host.
 
 /// Represents a waSCC AWS Lambda runtime provider.
 pub struct AwsLambdaRuntimeProvider {
@@ -56,10 +57,6 @@ struct Poller {
 impl Default for AwsLambdaRuntimeProvider {
     // Returns the default value for `AwsLambdaRuntimeProvider`.
     fn default() -> Self {
-        if env_logger::try_init().is_err() {
-            debug!("Logger already intialized");
-        }
-
         AwsLambdaRuntimeProvider {
             dispatcher: Arc::new(RwLock::new(Box::new(NullDispatcher::new()))),
             shutdown: Arc::new(RwLock::new(HashMap::new())),
