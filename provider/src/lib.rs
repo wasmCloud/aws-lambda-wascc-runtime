@@ -33,6 +33,7 @@ use std::error::Error;
 use std::sync::{Arc, RwLock};
 use std::thread;
 
+mod http;
 mod lambda;
 
 const CAPABILITY_ID: &str = "awslambda:runtime";
