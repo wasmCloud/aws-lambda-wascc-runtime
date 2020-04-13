@@ -28,7 +28,7 @@ resource "aws_api_gateway_rest_api" "example" {
   name = "waSCC-example-apigw"
 }
 resource "aws_api_gateway_resource" "example" {
-  path_part   = "helloworld"
+  path_part   = "uppercase"
   parent_id   = aws_api_gateway_rest_api.example.root_resource_id
   rest_api_id = aws_api_gateway_rest_api.example.id
 }

@@ -1,0 +1,22 @@
+[package]
+name = "uppercase"
+version = "0.6.1"
+authors = ["Kit Ewbank <Kit_Ewbank@hotmail.com>"]
+edition = "2018"
+license = "Apache-2.0"
+readme = "README.md"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+wascc-actor = "0.6.0"
+log = '0.4.8'
+serde = { version = "1.0.104", features = ["derive"]}
+wascc-codec = "0.6.0"
+
+[profile.release]
+# Optimize for small code size
+opt-level = "s"
+
+[workspace]
