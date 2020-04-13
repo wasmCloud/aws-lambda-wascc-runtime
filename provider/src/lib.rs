@@ -229,7 +229,7 @@ impl Poller {
                 }
                 // The event couldn't be converted to an HTTP request.
                 // Dispatch as a Lambda raw event.
-                Err(e) if e.is::<NotHttpRequestError>() => debug!("{}", e),
+                Err(e) if e.is::<NotHttpRequestError>() => info!("{}", e),
                 Err(e) if e.is::<DispatcherError>() => {
                     match e.downcast_ref::<DispatcherError>().unwrap() {
                         // The event could be converted to an HTTP request but couldn't be serialized.

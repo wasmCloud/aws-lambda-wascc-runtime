@@ -21,7 +21,14 @@ use aws_lambda_events::event::alb;
 use std::collections::HashMap;
 use std::convert::TryFrom;
 
-struct AlbTargetGroupRequestWrapper(alb::AlbTargetGroupRequest);
+pub(crate) struct AlbTargetGroupRequestWrapper(alb::AlbTargetGroupRequest);
+
+impl From<alb::AlbTargetGroupRequest> for AlbTargetGroupRequestWrapper {
+    /// Converts an ALB request to an instance of the wrapper type.
+    fn from(request: alb::AlbTargetGroupRequest) -> Self {
+        AlbTargetGroupRequestWrapper(request)
+    }
+}
 
 impl TryFrom<AlbTargetGroupRequestWrapper> for wascc_codec::http::Request {
     type Error = anyhow::Error;
@@ -50,7 +57,14 @@ impl TryFrom<AlbTargetGroupRequestWrapper> for wascc_codec::http::Request {
     }
 }
 
-struct AlbTargetGroupResponseWrapper(alb::AlbTargetGroupResponse);
+pub(crate) struct AlbTargetGroupResponseWrapper(alb::AlbTargetGroupResponse);
+
+impl From<AlbTargetGroupResponseWrapper> for alb::AlbTargetGroupResponse {
+    /// Converts instance of the wrapper type to an ALB response.
+    fn from(response: AlbTargetGroupResponseWrapper) -> Self {
+        response.0
+    }
+}
 
 impl TryFrom<wascc_codec::http::Response> for AlbTargetGroupResponseWrapper {
     type Error = anyhow::Error;

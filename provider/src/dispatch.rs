@@ -16,10 +16,14 @@
 // waSCC AWS Lambda Runtime Provider
 //
 
+use aws_lambda_events::event::{alb, apigw};
 use serde::{Deserialize, Serialize};
 use wascc_codec::{deserialize, serialize};
 
+use std::convert::TryInto;
 use std::sync::{Arc, RwLock};
+
+use crate::http::{AlbTargetGroupRequestWrapper, AlbTargetGroupResponseWrapper};
 
 /// A dispatcher error.
 #[derive(thiserror::Error, Debug)]
@@ -107,6 +111,16 @@ impl HttpDispatcher {
     pub fn new(dispatcher: Arc<RwLock<Box<dyn wascc_codec::capabilities::Dispatcher>>>) -> Self {
         HttpDispatcher { dispatcher }
     }
+
+    fn dispatch_alb_request(
+        &self,
+        actor: &str,
+        request: AlbTargetGroupRequestWrapper,
+    ) -> anyhow::Result<AlbTargetGroupResponseWrapper> {
+        Ok(self
+            .dispatch_request(actor, request.try_into()?)?
+            .try_into()?)
+    }
 }
 
 impl Dispatcher<'_> for HttpDispatcher {
@@ -120,14 +134,19 @@ impl Dispatcher<'_> for HttpDispatcher {
     }
 
     fn dispatch_invocation_event(&self, actor: &str, body: &[u8]) -> anyhow::Result<Vec<u8>> {
-        // match serde_json::from_slice(body) {
-        //     Ok(request) => {
-        //         let response = self.dispatch_alb_http_request(request, request_id)?;
-        //         return serde_json::to_vec(&response)
-        //             .map_err(|e| anyhow!("Failed to serialize ALB response: {}", e));
-        //     }
-        //     _ => {}
-        // };
+        match serde_json::from_slice(body) {
+            Ok(request @ alb::AlbTargetGroupRequest { .. }) => {
+                let response: alb::AlbTargetGroupResponse =
+                    self.dispatch_alb_request(actor, request.into())?.into();
+                return serde_json::to_vec(&response).map_err(|e| e.into());
+            }
+            _ => debug!("Not an ALB request"),
+        };
+        match serde_json::from_slice(body) {
+            Ok(request @ apigw::ApiGatewayProxyRequest { .. }) => {}
+            _ => {}
+        };
+
         Err(NotHttpRequestError {}.into())
     }
 }
