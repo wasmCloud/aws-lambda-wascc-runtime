@@ -21,6 +21,33 @@ use wascc_codec::{deserialize, serialize};
 
 use std::sync::{Arc, RwLock};
 
+/// A dispatcher error.
+#[derive(thiserror::Error, Debug)]
+pub enum DispatcherError {
+    /// Request was not dispatched.
+    #[error("guest {} failed to handle {}: {}", actor, op, source)]
+    NotDispatched {
+        actor: String,
+        op: String,
+        #[source]
+        source: anyhow::Error,
+    },
+
+    /// Request serialization error.
+    #[error("failed to serialize actor's request: {}", source)]
+    RequestSerialization {
+        #[source]
+        source: anyhow::Error,
+    },
+
+    /// Response deserialization error.
+    #[error("failed to deserialize actor's response: {}", source)]
+    ResponseDeserialization {
+        #[source]
+        source: anyhow::Error,
+    },
+}
+
 /// Represents dispatching a request to an actor and returning its response.
 pub trait Dispatcher<'de> {
     /// The request type.
@@ -32,30 +59,38 @@ pub trait Dispatcher<'de> {
     /// The operation this dispatcher dispatches.
     const OP: &'static str;
 
-    /// Dispatches a request to the specified actor using the specified dispatcher.
-    fn dispatch(&self, actor: &str, request: Self::T) -> anyhow::Result<Self::U> {
-        let msg = match serialize(request) {
-            Ok(msg) => msg,
-            Err(e) => return Err(anyhow!("Failed to serialize actor's request: {}", e)),
-        };
+    /// Dispatches a request to the specified actor using our dispatcher.
+    fn dispatch_request(&self, actor: &str, request: Self::T) -> anyhow::Result<Self::U> {
+        let input = serialize(request).map_err(|e| DispatcherError::RequestSerialization {
+            source: anyhow!("{}", e),
+        })?;
 
         let handler_resp = {
             let dispatcher = self.dispatcher();
             let lock = dispatcher.read().unwrap();
-            lock.dispatch(actor, Self::OP, &msg)
+            lock.dispatch(actor, Self::OP, &input)
         };
-        let resp = handler_resp
-            .map_err(|e| anyhow!("Guest {} failed to handle {}: {}", actor, Self::OP, e))?;
+        let output = handler_resp.map_err(|e| DispatcherError::NotDispatched {
+            actor: actor.into(),
+            op: Self::OP.into(),
+            source: anyhow!("{}", e),
+        })?;
 
-        deserialize::<Self::U>(resp.as_slice())
-            .map_err(|e| anyhow!("Failed to deserialize actor's response: {}", e))
+        let response = deserialize::<Self::U>(output.as_slice()).map_err(|e| {
+            DispatcherError::ResponseDeserialization {
+                source: anyhow!("{}", e),
+            }
+        })?;
+
+        Ok(response)
     }
 
     /// Returns a dispatcher.
     fn dispatcher(&self) -> Arc<RwLock<Box<dyn wascc_codec::capabilities::Dispatcher>>>;
 
     /// Attempts to dispatch a Lambda invocation event, returning an invocation response.
-    fn try_dispatch(&self, actor: &str, body: &[u8]) -> anyhow::Result<Vec<u8>>;
+    /// The bodies of the invocation event and response are passed and returned.
+    fn dispatch_invocation_event(&self, actor: &str, event: &[u8]) -> anyhow::Result<Vec<u8>>;
 }
 
 /// Dispatches HTTP requests.
@@ -79,7 +114,7 @@ impl Dispatcher<'_> for HttpDispatcher {
         Arc::clone(&self.dispatcher)
     }
 
-    fn try_dispatch(&self, actor: &str, body: &[u8]) -> anyhow::Result<Vec<u8>> {
+    fn dispatch_invocation_event(&self, actor: &str, body: &[u8]) -> anyhow::Result<Vec<u8>> {
         Ok(vec![])
     }
 }
@@ -105,11 +140,11 @@ impl Dispatcher<'_> for RawEventDispatcher {
         Arc::clone(&self.dispatcher)
     }
 
-    fn try_dispatch(&self, actor: &str, body: &[u8]) -> anyhow::Result<Vec<u8>> {
-        let event = codec::Event {
+    fn dispatch_invocation_event(&self, actor: &str, body: &[u8]) -> anyhow::Result<Vec<u8>> {
+        let raw_event = codec::Event {
             body: body.to_vec(),
         };
 
-        Ok(self.dispatch(actor, event)?.body)
+        Ok(self.dispatch_request(actor, raw_event)?.body)
     }
 }
