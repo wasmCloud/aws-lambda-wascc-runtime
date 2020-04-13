@@ -25,7 +25,7 @@ use std::sync::{Arc, RwLock};
 #[derive(thiserror::Error, Debug)]
 pub(crate) enum DispatcherError {
     /// Request was not dispatched.
-    #[error("guest {} failed to handle {}: {}", actor, op, source)]
+    #[error("Guest {} failed to handle {}: {}", actor, op, source)]
     NotDispatched {
         actor: String,
         op: String,
@@ -34,14 +34,14 @@ pub(crate) enum DispatcherError {
     },
 
     /// Request serialization error.
-    #[error("failed to serialize actor's request: {}", source)]
+    #[error("Failed to serialize actor's request: {}", source)]
     RequestSerialization {
         #[source]
         source: anyhow::Error,
     },
 
     /// Response deserialization error.
-    #[error("failed to deserialize actor's response: {}", source)]
+    #[error("Failed to deserialize actor's response: {}", source)]
     ResponseDeserialization {
         #[source]
         source: anyhow::Error,
@@ -93,13 +93,18 @@ pub(crate) trait Dispatcher<'de> {
     fn dispatch_invocation_event(&self, actor: &str, event: &[u8]) -> anyhow::Result<Vec<u8>>;
 }
 
+/// The invocation request is not an HTTP request.
+#[derive(thiserror::Error, Debug)]
+#[error("Not an HTTP request")]
+pub(crate) struct NotHttpRequestError;
+
 /// Dispatches HTTP requests.
 pub(crate) struct HttpDispatcher {
     dispatcher: Arc<RwLock<Box<dyn wascc_codec::capabilities::Dispatcher>>>,
 }
 
 impl HttpDispatcher {
-    fn new(dispatcher: Arc<RwLock<Box<dyn wascc_codec::capabilities::Dispatcher>>>) -> Self {
+    pub fn new(dispatcher: Arc<RwLock<Box<dyn wascc_codec::capabilities::Dispatcher>>>) -> Self {
         HttpDispatcher { dispatcher }
     }
 }
@@ -115,7 +120,15 @@ impl Dispatcher<'_> for HttpDispatcher {
     }
 
     fn dispatch_invocation_event(&self, actor: &str, body: &[u8]) -> anyhow::Result<Vec<u8>> {
-        Ok(vec![])
+        // match serde_json::from_slice(body) {
+        //     Ok(request) => {
+        //         let response = self.dispatch_alb_http_request(request, request_id)?;
+        //         return serde_json::to_vec(&response)
+        //             .map_err(|e| anyhow!("Failed to serialize ALB response: {}", e));
+        //     }
+        //     _ => {}
+        // };
+        Err(NotHttpRequestError {}.into())
     }
 }
 
