@@ -23,15 +23,17 @@ extern crate log;
 
 use aws_lambda_events::event::alb::{AlbTargetGroupRequest, AlbTargetGroupResponse};
 use serde_json;
-use std::collections::{HashMap, HashSet};
-use std::env;
-use wascc_codec::capabilities::{CapabilityProvider, Dispatcher, NullDispatcher};
+use wascc_codec::capabilities::CapabilityProvider;
 use wascc_codec::core::{CapabilityConfiguration, OP_BIND_ACTOR, OP_REMOVE_ACTOR};
 use wascc_codec::{deserialize, serialize};
 
+use std::collections::{HashMap, HashSet};
+use std::env;
 use std::error::Error;
 use std::sync::{Arc, RwLock};
 use std::thread;
+
+use crate::dispatch::{Dispatcher, RawEventDispatcher};
 
 mod dispatch;
 mod http;
@@ -43,14 +45,14 @@ const CAPABILITY_ID: &str = "awslambda:runtime";
 
 /// Represents a waSCC AWS Lambda runtime provider.
 pub struct AwsLambdaRuntimeProvider {
-    dispatcher: Arc<RwLock<Box<dyn Dispatcher>>>,
+    dispatcher: Arc<RwLock<Box<dyn wascc_codec::capabilities::Dispatcher>>>,
     shutdown: Arc<RwLock<HashMap<String, bool>>>,
 }
 
 /// Polls the Lambda event machinery.
 struct Poller {
     client: lambda::Client,
-    dispatcher: Arc<RwLock<Box<dyn Dispatcher>>>,
+    dispatcher: Arc<RwLock<Box<dyn wascc_codec::capabilities::Dispatcher>>>,
     module_id: String,
     shutdown: Arc<RwLock<HashMap<String, bool>>>,
     dispatched: HashSet<String>,
@@ -60,7 +62,9 @@ impl Default for AwsLambdaRuntimeProvider {
     // Returns the default value for `AwsLambdaRuntimeProvider`.
     fn default() -> Self {
         AwsLambdaRuntimeProvider {
-            dispatcher: Arc::new(RwLock::new(Box::new(NullDispatcher::new()))),
+            dispatcher: Arc::new(RwLock::new(Box::new(
+                wascc_codec::capabilities::NullDispatcher::new(),
+            ))),
             shutdown: Arc::new(RwLock::new(HashMap::new())),
         }
     }
@@ -132,7 +136,10 @@ impl CapabilityProvider for AwsLambdaRuntimeProvider {
     }
 
     /// Called when the host runtime is ready and has configured a dispatcher.
-    fn configure_dispatch(&self, dispatcher: Box<dyn Dispatcher>) -> Result<(), Box<dyn Error>> {
+    fn configure_dispatch(
+        &self,
+        dispatcher: Box<dyn wascc_codec::capabilities::Dispatcher>,
+    ) -> Result<(), Box<dyn Error>> {
         debug!("awslambda:runtime configure_dispatch");
 
         let mut lock = self.dispatcher.write().unwrap();
@@ -165,7 +172,7 @@ impl Poller {
     fn new(
         module_id: &str,
         endpoint: &str,
-        dispatcher: Arc<RwLock<Box<dyn Dispatcher>>>,
+        dispatcher: Arc<RwLock<Box<dyn wascc_codec::capabilities::Dispatcher>>>,
         shutdown: Arc<RwLock<HashMap<String, bool>>>,
     ) -> Self {
         Poller {
@@ -179,6 +186,8 @@ impl Poller {
 
     /// Runs the poller until shutdown.
     fn run(&mut self) {
+        let raw_event_dispatcher = RawEventDispatcher::new(Arc::clone(&self.dispatcher));
+
         loop {
             if self.shutdown() {
                 break;
@@ -241,7 +250,7 @@ impl Poller {
                 Err(e) => warn!("{}", e),
             };
 
-            match self.try_dispatch_lambda_event(event.body(), request_id) {
+            match raw_event_dispatcher.dispatch_invocation_event(&self.module_id, event.body()) {
                 Ok(body) => self.send_invocation_response(body, request_id),
                 Err(e) => {
                     error!("{}", e);
@@ -292,41 +301,6 @@ impl Poller {
         };
 
         Ok(vec![])
-    }
-
-    /// Attempts to dispatch a Lambda raw event to an actor.
-    fn try_dispatch_lambda_event(
-        &mut self,
-        body: &Vec<u8>,
-        request_id: &str,
-    ) -> anyhow::Result<Vec<u8>> {
-        let event = codec::Event {
-            body: body.to_vec(),
-        };
-        let msg = match serialize(event) {
-            Ok(msg) => msg,
-            Err(e) => return Err(anyhow!("Failed to serialize Lambda raw event: {}", e)),
-        };
-
-        // Call handler.
-        info!("Poller dispatch Lambda raw event");
-        let handler_resp = {
-            let lock = self.dispatcher.read().unwrap();
-            lock.dispatch(&self.module_id, codec::OP_HANDLE_EVENT, &msg)
-        };
-        // Handle response or error.
-        match handler_resp {
-            Ok(r) => {
-                // Record that the request was dispatched.
-                self.dispatched.insert(request_id.into());
-
-                match deserialize::<codec::Response>(r.as_slice()) {
-                    Ok(resp) => Ok(resp.body),
-                    Err(e) => Err(anyhow!("Failed to deserialize HTTP response: {}", e)),
-                }
-            }
-            Err(e) => Err(anyhow!("Guest failed to handle Lambda event: {}", e)),
-        }
     }
 
     /// Dispatches an ALB HTTP request to an actor.

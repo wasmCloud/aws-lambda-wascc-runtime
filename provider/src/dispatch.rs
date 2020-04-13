@@ -23,7 +23,7 @@ use std::sync::{Arc, RwLock};
 
 /// A dispatcher error.
 #[derive(thiserror::Error, Debug)]
-pub enum DispatcherError {
+pub(crate) enum DispatcherError {
     /// Request was not dispatched.
     #[error("guest {} failed to handle {}: {}", actor, op, source)]
     NotDispatched {
@@ -49,7 +49,7 @@ pub enum DispatcherError {
 }
 
 /// Represents dispatching a request to an actor and returning its response.
-pub trait Dispatcher<'de> {
+pub(crate) trait Dispatcher<'de> {
     /// The request type.
     type T: Serialize;
 
@@ -94,7 +94,7 @@ pub trait Dispatcher<'de> {
 }
 
 /// Dispatches HTTP requests.
-pub struct HttpDispatcher {
+pub(crate) struct HttpDispatcher {
     dispatcher: Arc<RwLock<Box<dyn wascc_codec::capabilities::Dispatcher>>>,
 }
 
@@ -120,12 +120,12 @@ impl Dispatcher<'_> for HttpDispatcher {
 }
 
 /// Dispatches Lambda raw events.
-pub struct RawEventDispatcher {
+pub(crate) struct RawEventDispatcher {
     dispatcher: Arc<RwLock<Box<dyn wascc_codec::capabilities::Dispatcher>>>,
 }
 
 impl RawEventDispatcher {
-    fn new(dispatcher: Arc<RwLock<Box<dyn wascc_codec::capabilities::Dispatcher>>>) -> Self {
+    pub fn new(dispatcher: Arc<RwLock<Box<dyn wascc_codec::capabilities::Dispatcher>>>) -> Self {
         RawEventDispatcher { dispatcher }
     }
 }
