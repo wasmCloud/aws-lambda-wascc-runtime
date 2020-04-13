@@ -19,27 +19,30 @@
 use aws_lambda_events::event::alb;
 
 use std::collections::HashMap;
-use std::convert::{TryFrom, TryInto};
+use std::convert::TryFrom;
 
 struct AlbTargetGroupRequestWrapper(alb::AlbTargetGroupRequest);
 
-impl TryInto<wascc_codec::http::Request> for AlbTargetGroupRequestWrapper {
+impl TryFrom<AlbTargetGroupRequestWrapper> for wascc_codec::http::Request {
     type Error = anyhow::Error;
 
     /// Attempts conversion of an ALB request to an actor's HTTP request.
-    fn try_into(self) -> anyhow::Result<wascc_codec::http::Request> {
-        let query_string = query_string(self.0.query_string_parameters);
+    fn try_from(request: AlbTargetGroupRequestWrapper) -> anyhow::Result<Self> {
+        let query_string = query_string(request.0.query_string_parameters);
 
         Ok(wascc_codec::http::Request {
-            method: self
+            method: request
                 .0
                 .http_method
                 .ok_or(anyhow!("Missing method in ALB request"))?,
-            path: self.0.path.ok_or(anyhow!("Missing path in ALB request"))?,
+            path: request
+                .0
+                .path
+                .ok_or(anyhow!("Missing path in ALB request"))?,
             query_string,
-            header: self.0.headers,
-            body: match self.0.body {
-                Some(s) if self.0.is_base64_encoded => base64::decode(s)?,
+            header: request.0.headers,
+            body: match request.0.body {
+                Some(s) if request.0.is_base64_encoded => base64::decode(s)?,
                 Some(s) => s.into_bytes(),
                 None => vec![],
             },
