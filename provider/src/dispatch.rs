@@ -23,7 +23,10 @@ use wascc_codec::{deserialize, serialize};
 use std::convert::TryInto;
 use std::sync::{Arc, RwLock};
 
-use crate::http::{AlbTargetGroupRequestWrapper, AlbTargetGroupResponseWrapper};
+use crate::http::{
+    AlbTargetGroupRequestWrapper, AlbTargetGroupResponseWrapper, ApiGatewayProxyRequestWrapper,
+    ApiGatewayProxyResponseWrapper,
+};
 
 /// A dispatcher error.
 #[derive(thiserror::Error, Debug)]
@@ -108,15 +111,30 @@ pub(crate) struct HttpDispatcher {
 }
 
 impl HttpDispatcher {
+    /// Returns a new `HttpDispatcher`.
     pub fn new(dispatcher: Arc<RwLock<Box<dyn wascc_codec::capabilities::Dispatcher>>>) -> Self {
         HttpDispatcher { dispatcher }
     }
 
+    /// Dispatches an ALB target group request.
     fn dispatch_alb_request(
         &self,
         actor: &str,
         request: AlbTargetGroupRequestWrapper,
     ) -> anyhow::Result<AlbTargetGroupResponseWrapper> {
+        info!("HttpDispatcher dispatch ALB target group request");
+        Ok(self
+            .dispatch_request(actor, request.try_into()?)?
+            .try_into()?)
+    }
+
+    /// Dispatches an API Gateway proxy request.
+    fn dispatch_apigw_request(
+        &self,
+        actor: &str,
+        request: ApiGatewayProxyRequestWrapper,
+    ) -> anyhow::Result<ApiGatewayProxyResponseWrapper> {
+        info!("HttpDispatcher dispatch API Gateway proxy request");
         Ok(self
             .dispatch_request(actor, request.try_into()?)?
             .try_into()?)
@@ -133,6 +151,8 @@ impl Dispatcher<'_> for HttpDispatcher {
         Arc::clone(&self.dispatcher)
     }
 
+    /// Attempts to dispatch a Lambda invocation event, returning an invocation response.
+    /// The bodies of the invocation event and response are passed and returned.
     fn dispatch_invocation_event(&self, actor: &str, body: &[u8]) -> anyhow::Result<Vec<u8>> {
         match serde_json::from_slice(body) {
             Ok(request @ alb::AlbTargetGroupRequest { .. }) => {
@@ -143,8 +163,12 @@ impl Dispatcher<'_> for HttpDispatcher {
             _ => debug!("Not an ALB request"),
         };
         match serde_json::from_slice(body) {
-            Ok(request @ apigw::ApiGatewayProxyRequest { .. }) => {}
-            _ => {}
+            Ok(request @ apigw::ApiGatewayProxyRequest { .. }) => {
+                let response: apigw::ApiGatewayProxyResponse =
+                    self.dispatch_apigw_request(actor, request.into())?.into();
+                return serde_json::to_vec(&response).map_err(|e| e.into());
+            }
+            _ => debug!("Not an API Gateway proxy request"),
         };
 
         Err(NotHttpRequestError {}.into())
@@ -157,6 +181,7 @@ pub(crate) struct RawEventDispatcher {
 }
 
 impl RawEventDispatcher {
+    /// Returns a new `RawEventDispatcher`.
     pub fn new(dispatcher: Arc<RwLock<Box<dyn wascc_codec::capabilities::Dispatcher>>>) -> Self {
         RawEventDispatcher { dispatcher }
     }
@@ -172,6 +197,8 @@ impl Dispatcher<'_> for RawEventDispatcher {
         Arc::clone(&self.dispatcher)
     }
 
+    /// Attempts to dispatch a Lambda invocation event, returning an invocation response.
+    /// The bodies of the invocation event and response are passed and returned.
     fn dispatch_invocation_event(&self, actor: &str, body: &[u8]) -> anyhow::Result<Vec<u8>> {
         let raw_event = codec::Event {
             body: body.to_vec(),

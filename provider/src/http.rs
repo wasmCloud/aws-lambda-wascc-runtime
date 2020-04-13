@@ -16,7 +16,7 @@
 // waSCC AWS Lambda Runtime Provider
 //
 
-use aws_lambda_events::event::alb;
+use aws_lambda_events::event::{alb, apigw};
 
 use std::collections::HashMap;
 use std::convert::TryFrom;
@@ -24,7 +24,7 @@ use std::convert::TryFrom;
 pub(crate) struct AlbTargetGroupRequestWrapper(alb::AlbTargetGroupRequest);
 
 impl From<alb::AlbTargetGroupRequest> for AlbTargetGroupRequestWrapper {
-    /// Converts an ALB request to an instance of the wrapper type.
+    /// Converts an ALB target group request to an instance of the wrapper type.
     fn from(request: alb::AlbTargetGroupRequest) -> Self {
         AlbTargetGroupRequestWrapper(request)
     }
@@ -33,7 +33,7 @@ impl From<alb::AlbTargetGroupRequest> for AlbTargetGroupRequestWrapper {
 impl TryFrom<AlbTargetGroupRequestWrapper> for wascc_codec::http::Request {
     type Error = anyhow::Error;
 
-    /// Attempts conversion of an ALB request to an actor's HTTP request.
+    /// Attempts conversion of an ALB target group request to an actor's HTTP request.
     fn try_from(request: AlbTargetGroupRequestWrapper) -> anyhow::Result<Self> {
         let query_string = query_string(request.0.query_string_parameters);
 
@@ -41,11 +41,11 @@ impl TryFrom<AlbTargetGroupRequestWrapper> for wascc_codec::http::Request {
             method: request
                 .0
                 .http_method
-                .ok_or(anyhow!("Missing method in ALB request"))?,
+                .ok_or(anyhow!("Missing method in ALB target group request"))?,
             path: request
                 .0
                 .path
-                .ok_or(anyhow!("Missing path in ALB request"))?,
+                .ok_or(anyhow!("Missing path in ALB target group request"))?,
             query_string,
             header: request.0.headers,
             body: match request.0.body {
@@ -66,6 +66,13 @@ impl From<AlbTargetGroupResponseWrapper> for alb::AlbTargetGroupResponse {
     }
 }
 
+impl From<alb::AlbTargetGroupResponse> for AlbTargetGroupResponseWrapper {
+    /// Converts instance of an ALB response to the wrapper type.
+    fn from(response: alb::AlbTargetGroupResponse) -> Self {
+        AlbTargetGroupResponseWrapper(response)
+    }
+}
+
 impl TryFrom<wascc_codec::http::Response> for AlbTargetGroupResponseWrapper {
     type Error = anyhow::Error;
 
@@ -73,14 +80,85 @@ impl TryFrom<wascc_codec::http::Response> for AlbTargetGroupResponseWrapper {
     fn try_from(response: wascc_codec::http::Response) -> anyhow::Result<Self> {
         let (body, is_base64_encoded) = body_string(response.body);
 
-        Ok(AlbTargetGroupResponseWrapper(alb::AlbTargetGroupResponse {
+        Ok(alb::AlbTargetGroupResponse {
             status_code: response.status_code as i64,
             status_description: Some(response.status),
             headers: response.header,
             multi_value_headers: HashMap::new(),
             body,
             is_base64_encoded,
-        }))
+        }
+        .into())
+    }
+}
+
+pub(crate) struct ApiGatewayProxyRequestWrapper(apigw::ApiGatewayProxyRequest);
+
+impl From<apigw::ApiGatewayProxyRequest> for ApiGatewayProxyRequestWrapper {
+    /// Converts an API Gateway proxy request to an instance of the wrapper type.
+    fn from(request: apigw::ApiGatewayProxyRequest) -> Self {
+        ApiGatewayProxyRequestWrapper(request)
+    }
+}
+
+impl TryFrom<ApiGatewayProxyRequestWrapper> for wascc_codec::http::Request {
+    type Error = anyhow::Error;
+
+    /// Attempts conversion of an API Gateway proxy request to an actor's HTTP request.
+    fn try_from(request: ApiGatewayProxyRequestWrapper) -> anyhow::Result<Self> {
+        let query_string = query_string(request.0.query_string_parameters);
+
+        Ok(wascc_codec::http::Request {
+            method: request
+                .0
+                .http_method
+                .ok_or(anyhow!("Missing method in ALB target group request"))?,
+            path: request
+                .0
+                .path
+                .ok_or(anyhow!("Missing path in ALB target group request"))?,
+            query_string,
+            header: request.0.headers,
+            body: match request.0.body {
+                Some(s) if request.0.is_base64_encoded.is_some() => base64::decode(s)?,
+                Some(s) => s.into_bytes(),
+                None => vec![],
+            },
+        })
+    }
+}
+
+pub(crate) struct ApiGatewayProxyResponseWrapper(apigw::ApiGatewayProxyResponse);
+
+impl From<ApiGatewayProxyResponseWrapper> for apigw::ApiGatewayProxyResponse {
+    /// Converts instance of the wrapper type to an API Gateway proxy response.
+    fn from(response: ApiGatewayProxyResponseWrapper) -> Self {
+        response.0
+    }
+}
+
+impl From<apigw::ApiGatewayProxyResponse> for ApiGatewayProxyResponseWrapper {
+    /// Converts instance of an API Gateway proxy response to the wrapper type.
+    fn from(response: apigw::ApiGatewayProxyResponse) -> Self {
+        ApiGatewayProxyResponseWrapper(response)
+    }
+}
+
+impl TryFrom<wascc_codec::http::Response> for ApiGatewayProxyResponseWrapper {
+    type Error = anyhow::Error;
+
+    /// Attempts conversion of an actor's HTTP response to an API Gateway proxy response.
+    fn try_from(response: wascc_codec::http::Response) -> anyhow::Result<Self> {
+        let (body, is_base64_encoded) = body_string(response.body);
+
+        Ok(apigw::ApiGatewayProxyResponse {
+            status_code: response.status_code as i64,
+            headers: response.header,
+            multi_value_headers: HashMap::new(),
+            body,
+            is_base64_encoded: Some(is_base64_encoded),
+        }
+        .into())
     }
 }
 
@@ -103,3 +181,5 @@ fn query_string(qs: HashMap<String, String>) -> String {
         .extend_pairs(qs.iter())
         .finish()
 }
+
+// TODO Handle multi_value_query_string_parameters.

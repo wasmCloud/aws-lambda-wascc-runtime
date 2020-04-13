@@ -257,6 +257,7 @@ impl Poller {
                 }
             };
 
+            // Dispatch as a Lambda raw event.
             match raw_event_dispatcher.dispatch_invocation_event(&self.module_id, event.body()) {
                 Ok(body) => self.send_invocation_response(body, request_id),
                 Err(e) => {
