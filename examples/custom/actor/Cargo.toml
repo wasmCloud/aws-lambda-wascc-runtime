@@ -12,7 +12,7 @@ crate-type = ["cdylib"]
 [dependencies]
 log = "0.4.8"
 serde_json = "1.0.51"
-wascc-actor = "0.7.0"
+wascc-actor = "0.7.1"
 codec = { path = "../../../codec" }
 
 [profile.release]
