@@ -14,7 +14,7 @@ reqwest = { version = "0.10.4", features = ["blocking", "json"] }
 serde = "1.0.106"
 serde_json = "1.0.51"
 codec = { path = "../codec" }
-aws_lambda_events = "0.2.7"
+aws_lambda_events = { git = "https://github.com/ewbankkit/aws-lambda-events", branch = "include-aws-lambda-go.pr-280" }
 base64 = "0.12.0"
 url = "2.1.1"
 thiserror = "1.0.15"
