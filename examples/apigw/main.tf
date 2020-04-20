@@ -6,9 +6,9 @@ terraform {
   required_version = ">= 0.12.19"
 }
 
-provider "aws" {
-  version = ">= 2.50.0"
-}
+# provider "aws" {
+#   version = ">= 2.58.0"
+# }
 
 //
 // Data sources for current AWS account ID, partition and region.
@@ -24,32 +24,10 @@ data "aws_region" "current" {}
 // API Gateway resources.
 //
 
-resource "aws_api_gateway_rest_api" "example" {
-  name = "waSCC-example-apigw"
-}
-resource "aws_api_gateway_resource" "example" {
-  path_part   = "uppercase"
-  parent_id   = aws_api_gateway_rest_api.example.root_resource_id
-  rest_api_id = aws_api_gateway_rest_api.example.id
-}
-resource "aws_api_gateway_method" "example" {
-  rest_api_id   = aws_api_gateway_rest_api.example.id
-  resource_id   = aws_api_gateway_resource.example.id
-  http_method   = "GET"
-  authorization = "NONE"
-}
-resource "aws_api_gateway_integration" "example" {
-  rest_api_id             = aws_api_gateway_rest_api.example.id
-  resource_id             = aws_api_gateway_resource.example.id
-  http_method             = aws_api_gateway_method.example.http_method
-  integration_http_method = "POST"
-  type                    = "AWS_PROXY"
-  uri                     = aws_lambda_function.example.invoke_arn
-}
-resource "aws_api_gateway_deployment" "example" {
-  depends_on  = [aws_api_gateway_integration.example]
-  rest_api_id = aws_api_gateway_rest_api.example.id
-  stage_name  = "test"
+resource "aws_apigatewayv2_api" "example" {
+  name          = "waSCC-example-apigw"
+  protocol_type = "HTTP"
+  target        = aws_lambda_function.example.arn
 }
 
 //
@@ -84,7 +62,7 @@ resource "aws_lambda_permission" "example" {
   action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.example.function_name
   principal     = "apigateway.amazonaws.com"
-  source_arn    = "arn:${data.aws_partition.current.partition}:execute-api:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:${aws_api_gateway_rest_api.example.id}/*/${aws_api_gateway_method.example.http_method}${aws_api_gateway_resource.example.path}"
+  source_arn    = "arn:${data.aws_partition.current.partition}:execute-api:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:${aws_apigatewayv2_api.example.id}/"
 }
 
 //
@@ -149,5 +127,5 @@ output "FunctionName" {
 }
 
 output "Url" {
-  value = "${aws_api_gateway_deployment.example.invoke_url}/${aws_api_gateway_resource.example.path_part}"
+  value = aws_apigatewayv2_api.example.api_endpoint
 }
