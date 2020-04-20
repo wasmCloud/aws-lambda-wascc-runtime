@@ -25,7 +25,8 @@ use std::sync::{Arc, RwLock};
 
 use crate::http::{
     AlbTargetGroupRequestWrapper, AlbTargetGroupResponseWrapper, ApiGatewayProxyRequestWrapper,
-    ApiGatewayProxyResponseWrapper,
+    ApiGatewayProxyResponseWrapper, ApiGatewayV2ProxyRequestWrapper,
+    ApiGatewayV2ProxyResponseWrapper,
 };
 
 /// A dispatcher error.
@@ -139,6 +140,18 @@ impl HttpDispatcher {
             .dispatch_request(actor, request.try_into()?)?
             .try_into()?)
     }
+
+    /// Dispatches an API Gateway v2 proxy request.
+    fn dispatch_apigwv2_request(
+        &self,
+        actor: &str,
+        request: ApiGatewayV2ProxyRequestWrapper,
+    ) -> anyhow::Result<ApiGatewayV2ProxyResponseWrapper> {
+        info!("HttpDispatcher dispatch API Gateway v2 proxy request");
+        Ok(self
+            .dispatch_request(actor, request.try_into()?)?
+            .try_into()?)
+    }
 }
 
 impl Dispatcher<'_> for HttpDispatcher {
@@ -169,6 +182,14 @@ impl Dispatcher<'_> for HttpDispatcher {
                 return serde_json::to_vec(&response).map_err(|e| e.into());
             }
             _ => debug!("Not an API Gateway proxy request"),
+        };
+        match serde_json::from_slice(body) {
+            Ok(request @ apigw::ApiGatewayV2httpRequest { .. }) => {
+                let response: apigw::ApiGatewayV2httpResponse =
+                    self.dispatch_apigwv2_request(actor, request.into())?.into();
+                return serde_json::to_vec(&response).map_err(|e| e.into());
+            }
+            _ => debug!("Not an API Gateway v2 proxy request"),
         };
 
         Err(NotHttpRequestError {}.into())

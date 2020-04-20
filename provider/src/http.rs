@@ -112,11 +112,11 @@ impl TryFrom<ApiGatewayProxyRequestWrapper> for wascc_codec::http::Request {
             method: request
                 .0
                 .http_method
-                .ok_or(anyhow!("Missing method in ALB target group request"))?,
+                .ok_or(anyhow!("Missing method in API Gateway proxy request"))?,
             path: request
                 .0
                 .path
-                .ok_or(anyhow!("Missing path in ALB target group request"))?,
+                .ok_or(anyhow!("Missing path in API Gateway proxy request"))?,
             query_string,
             header: request.0.headers,
             body: match request.0.body {
@@ -157,6 +157,81 @@ impl TryFrom<wascc_codec::http::Response> for ApiGatewayProxyResponseWrapper {
             multi_value_headers: HashMap::new(),
             body,
             is_base64_encoded: Some(is_base64_encoded),
+        }
+        .into())
+    }
+}
+
+pub(crate) struct ApiGatewayV2ProxyRequestWrapper(apigw::ApiGatewayV2httpRequest);
+
+impl From<apigw::ApiGatewayV2httpRequest> for ApiGatewayV2ProxyRequestWrapper {
+    /// Converts an API Gateway v2 proxy request to an instance of the wrapper type.
+    fn from(request: apigw::ApiGatewayV2httpRequest) -> Self {
+        ApiGatewayV2ProxyRequestWrapper(request)
+    }
+}
+
+impl TryFrom<ApiGatewayV2ProxyRequestWrapper> for wascc_codec::http::Request {
+    type Error = anyhow::Error;
+
+    /// Attempts conversion of an API Gateway v2 proxy request to an actor's HTTP request.
+    fn try_from(request: ApiGatewayV2ProxyRequestWrapper) -> anyhow::Result<Self> {
+        let query_string = query_string(request.0.query_string_parameters);
+
+        Ok(wascc_codec::http::Request {
+            method: request
+                .0
+                .request_context
+                .http
+                .method
+                .ok_or(anyhow!("Missing method in API Gateway v2 proxy request"))?,
+            path: request
+                .0
+                .request_context
+                .http
+                .path
+                .ok_or(anyhow!("Missing path in API Gateway v2 proxy request"))?,
+            query_string,
+            header: request.0.headers,
+            body: match request.0.body {
+                Some(s) if request.0.is_base64_encoded => base64::decode(s)?,
+                Some(s) => s.into_bytes(),
+                None => vec![],
+            },
+        })
+    }
+}
+
+pub(crate) struct ApiGatewayV2ProxyResponseWrapper(apigw::ApiGatewayV2httpResponse);
+
+impl From<ApiGatewayV2ProxyResponseWrapper> for apigw::ApiGatewayV2httpResponse {
+    /// Converts instance of the wrapper type to an API Gateway v2 proxy response.
+    fn from(response: ApiGatewayV2ProxyResponseWrapper) -> Self {
+        response.0
+    }
+}
+
+impl From<apigw::ApiGatewayV2httpResponse> for ApiGatewayV2ProxyResponseWrapper {
+    /// Converts instance of an API Gateway v2 proxy response to the wrapper type.
+    fn from(response: apigw::ApiGatewayV2httpResponse) -> Self {
+        ApiGatewayV2ProxyResponseWrapper(response)
+    }
+}
+
+impl TryFrom<wascc_codec::http::Response> for ApiGatewayV2ProxyResponseWrapper {
+    type Error = anyhow::Error;
+
+    /// Attempts conversion of an actor's HTTP response to an API Gateway v2 proxy response.
+    fn try_from(response: wascc_codec::http::Response) -> anyhow::Result<Self> {
+        let (body, is_base64_encoded) = body_string(response.body);
+
+        Ok(apigw::ApiGatewayV2httpResponse {
+            status_code: response.status_code as i64,
+            headers: response.header,
+            multi_value_headers: HashMap::new(),
+            body,
+            is_base64_encoded: Some(is_base64_encoded),
+            cookies: Vec::new(),
         }
         .into())
     }
