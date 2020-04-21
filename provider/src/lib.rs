@@ -21,16 +21,22 @@ extern crate anyhow;
 #[macro_use]
 extern crate log;
 
+use wascc_codec::capabilities::CapabilityProvider;
+use wascc_codec::core::{CapabilityConfiguration, OP_BIND_ACTOR, OP_REMOVE_ACTOR};
+use wascc_codec::deserialize;
+
 use std::collections::HashMap;
 use std::env;
-use wascc_codec::capabilities::{CapabilityProvider, Dispatcher, NullDispatcher};
-use wascc_codec::core::{CapabilityConfiguration, OP_BIND_ACTOR, OP_REMOVE_ACTOR};
-use wascc_codec::{deserialize, serialize};
-
 use std::error::Error;
 use std::sync::{Arc, RwLock};
 use std::thread;
 
+use crate::dispatch::{
+    Dispatcher, DispatcherError, HttpDispatcher, NotHttpRequestError, RawEventDispatcher,
+};
+
+mod dispatch;
+mod http;
 mod lambda;
 
 const CAPABILITY_ID: &str = "awslambda:runtime";
@@ -39,14 +45,14 @@ const CAPABILITY_ID: &str = "awslambda:runtime";
 
 /// Represents a waSCC AWS Lambda runtime provider.
 pub struct AwsLambdaRuntimeProvider {
-    dispatcher: Arc<RwLock<Box<dyn Dispatcher>>>,
+    dispatcher: Arc<RwLock<Box<dyn wascc_codec::capabilities::Dispatcher>>>,
     shutdown: Arc<RwLock<HashMap<String, bool>>>,
 }
 
 /// Polls the Lambda event machinery.
 struct Poller {
     client: lambda::Client,
-    dispatcher: Arc<RwLock<Box<dyn Dispatcher>>>,
+    dispatcher: Arc<RwLock<Box<dyn wascc_codec::capabilities::Dispatcher>>>,
     module_id: String,
     shutdown: Arc<RwLock<HashMap<String, bool>>>,
 }
@@ -55,7 +61,9 @@ impl Default for AwsLambdaRuntimeProvider {
     // Returns the default value for `AwsLambdaRuntimeProvider`.
     fn default() -> Self {
         AwsLambdaRuntimeProvider {
-            dispatcher: Arc::new(RwLock::new(Box::new(NullDispatcher::new()))),
+            dispatcher: Arc::new(RwLock::new(Box::new(
+                wascc_codec::capabilities::NullDispatcher::new(),
+            ))),
             shutdown: Arc::new(RwLock::new(HashMap::new())),
         }
     }
@@ -127,7 +135,10 @@ impl CapabilityProvider for AwsLambdaRuntimeProvider {
     }
 
     /// Called when the host runtime is ready and has configured a dispatcher.
-    fn configure_dispatch(&self, dispatcher: Box<dyn Dispatcher>) -> Result<(), Box<dyn Error>> {
+    fn configure_dispatch(
+        &self,
+        dispatcher: Box<dyn wascc_codec::capabilities::Dispatcher>,
+    ) -> Result<(), Box<dyn Error>> {
         debug!("awslambda:runtime configure_dispatch");
 
         let mut lock = self.dispatcher.write().unwrap();
@@ -160,7 +171,7 @@ impl Poller {
     fn new(
         module_id: &str,
         endpoint: &str,
-        dispatcher: Arc<RwLock<Box<dyn Dispatcher>>>,
+        dispatcher: Arc<RwLock<Box<dyn wascc_codec::capabilities::Dispatcher>>>,
         shutdown: Arc<RwLock<HashMap<String, bool>>>,
     ) -> Self {
         Poller {
@@ -173,6 +184,9 @@ impl Poller {
 
     /// Runs the poller until shutdown.
     fn run(&self) {
+        let http_dispatcher = HttpDispatcher::new(Arc::clone(&self.dispatcher));
+        let raw_event_dispatcher = RawEventDispatcher::new(Arc::clone(&self.dispatcher));
+
         loop {
             if self.shutdown() {
                 break;
@@ -181,18 +195,21 @@ impl Poller {
             // Get next event.
             debug!("Poller get next event");
             let event = match self.client.next_invocation_event() {
-                Err(err) => {
-                    error!("{}", err);
+                Err(e) => {
+                    error!("{}", e);
                     continue;
                 }
                 Ok(evt) => match evt {
-                    None => continue,
+                    None => {
+                        warn!("No event");
+                        continue;
+                    }
                     Some(event) => event,
                 },
             };
             let request_id = match event.request_id() {
                 None => {
-                    warn!("Missing request ID");
+                    warn!("No request ID");
                     continue;
                 }
                 Some(request_id) => request_id,
@@ -203,41 +220,75 @@ impl Poller {
                 env::set_var("_X_AMZN_TRACE_ID", trace_id);
             }
 
-            // Call handler.
-            debug!("Poller call handler");
-            let handler_resp = {
-                let event = codec::Event {
-                    body: event.body().to_vec(),
-                };
-                let buf = serialize(event).unwrap();
-                let lock = self.dispatcher.read().unwrap();
-                lock.dispatch(&self.module_id, codec::OP_HANDLE_EVENT, &buf)
-            };
-            // Handle response or error.
-            match handler_resp {
-                Ok(r) => {
-                    let r = deserialize::<codec::Response>(r.as_slice()).unwrap();
-                    let resp = lambda::InvocationResponse::new(r.body, request_id);
-                    debug!("Poller send response");
-                    match self.client.send_invocation_response(resp) {
-                        Ok(_) => {}
-                        Err(e) => error!("Unable to send invocation response: {}", e),
+            // Try first to dispatch as an HTTP request.
+            match http_dispatcher.dispatch_invocation_event(&self.module_id, event.body()) {
+                // The invocation event could be converted to an HTTP request and was dispatched succesfully.
+                Ok(body) => {
+                    self.send_invocation_response(body, request_id);
+                    continue;
+                }
+                // The event couldn't be converted to an HTTP request.
+                // Dispatch as a Lambda raw event.
+                Err(e) if e.is::<NotHttpRequestError>() => info!("{}", e),
+                Err(e) if e.is::<DispatcherError>() => {
+                    match e.downcast_ref::<DispatcherError>().unwrap() {
+                        // The event could be converted to an HTTP request but couldn't be serialized.
+                        // Dispatch as a Lambda raw event.
+                        e @ DispatcherError::RequestSerialization { .. } => warn!("{}", e),
+                        // The event could be converted to an HTTP request but wasn't dispatched to the actor.
+                        // Dispatch as a Lambda raw event.
+                        e @ DispatcherError::NotDispatched { .. } => warn!("{}", e),
+                        // The event could be converted to an HTTP request and was
+                        // dispatched succesfully but there was an error after dispatch,
+                        // Fail the invocation.
+                        _ => {
+                            error!("{}", e);
+                            self.send_invocation_error(e, request_id);
+                            continue;
+                        }
                     }
                 }
+                // Some other error.
+                // Fail the invocation.
                 Err(e) => {
-                    error!("Guest failed to handle Lambda event: {}", e);
-                    let err = lambda::InvocationError::new(e, request_id);
-                    debug!("Poller send error");
-                    match self.client.send_invocation_error(err) {
-                        Ok(_) => {}
-                        Err(e) => error!("Unable to send invocation error: {}", e),
-                    }
+                    error!("{}", e);
+                    self.send_invocation_error(e, request_id);
+                    continue;
+                }
+            };
+
+            // Dispatch as a Lambda raw event.
+            match raw_event_dispatcher.dispatch_invocation_event(&self.module_id, event.body()) {
+                Ok(body) => self.send_invocation_response(body, request_id),
+                Err(e) => {
+                    error!("{}", e);
+                    self.send_invocation_error(e, request_id)
                 }
             }
         }
     }
 
-    // Returns whether the shutdown flag is set.
+    /// Sends an invocation error.
+    fn send_invocation_error(&self, e: anyhow::Error, request_id: &str) {
+        let err = lambda::InvocationError::new(e, request_id);
+        debug!("Poller send error");
+        match self.client.send_invocation_error(err) {
+            Ok(_) => {}
+            Err(e) => error!("Unable to send invocation error: {}", e),
+        }
+    }
+
+    /// Sends an invocation response.
+    fn send_invocation_response(&self, body: Vec<u8>, request_id: &str) {
+        let resp = lambda::InvocationResponse::new(body, request_id);
+        debug!("Poller send response");
+        match self.client.send_invocation_response(resp) {
+            Ok(_) => {}
+            Err(e) => error!("Unable to send invocation response: {}", e),
+        }
+    }
+
+    /// Returns whether the shutdown flag is set.
     fn shutdown(&self) -> bool {
         *self.shutdown.read().unwrap().get(&self.module_id).unwrap()
     }
