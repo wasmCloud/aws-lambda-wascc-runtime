@@ -30,6 +30,10 @@ $ make
 
 ### Test
 
+```console
+$ curl https://v3390lt0j2.execute-api.us-west-2.amazonaws.com/?today=tuesday
+{"original":"today=tuesday","uppercased":"TODAY=TUESDAY"}
+```
 
 ### Known Issues
 

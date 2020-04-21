@@ -6,6 +6,9 @@ terraform {
   required_version = ">= 0.12.19"
 }
 
+
+# Build from https://github.com/terraform-providers/terraform-provider-aws/commit/df71a4fd95c0e5a9afe5b08c43a951d3a7fda0ed.
+# Will be released in v2.59.0.
 # provider "aws" {
 #   version = ">= 2.58.0"
 # }
