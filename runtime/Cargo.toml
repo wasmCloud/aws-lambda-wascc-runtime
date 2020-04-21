@@ -12,7 +12,7 @@ log = "0.4.8"
 anyhow = "1.0.28"
 wascc-codec = "0.6.0"
 provider = { path = "../provider" }
-wascc-host = { version = "0.6.0", features = ["manifest", "gantry"] }
+wascc-host = { version = "0.6.3", features = ["manifest", "gantry"] }
 wascc-logging = { version = "0.6.0", features = ["static_plugin"] }
 
 [[bin]]
