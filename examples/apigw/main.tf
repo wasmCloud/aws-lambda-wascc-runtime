@@ -58,11 +58,12 @@ resource "aws_lambda_function" "example" {
   }
 }
 
+// See https://docs.aws.amazon.com/lambda/latest/dg/services-apigateway.html#apigateway-permissions.
 resource "aws_lambda_permission" "example" {
   action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.example.function_name
   principal     = "apigateway.amazonaws.com"
-  source_arn    = "arn:${data.aws_partition.current.partition}:execute-api:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:${aws_apigatewayv2_api.example.id}/"
+  source_arn    = "arn:${data.aws_partition.current.partition}:execute-api:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:${aws_apigatewayv2_api.example.id}/*/$default"
 }
 
 //
