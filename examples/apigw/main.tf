@@ -53,7 +53,7 @@ resource "aws_lambda_function" "example" {
   environment {
     variables = {
       RUST_BACKTRACE = "1"
-      RUST_LOG       = "info,cranelift_wasm=warn"
+      RUST_LOG       = "info,cranelift_wasm=warn,cranelift_codegen=info"
     }
   }
 }
