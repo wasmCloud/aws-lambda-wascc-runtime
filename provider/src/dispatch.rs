@@ -167,7 +167,14 @@ impl Dispatcher<'_> for HttpDispatcher {
     /// Attempts to dispatch a Lambda invocation event, returning an invocation response.
     /// The bodies of the invocation event and response are passed and returned.
     fn dispatch_invocation_event(&self, actor: &str, body: &[u8]) -> anyhow::Result<Vec<u8>> {
-        match serde_json::from_slice(body) {
+        let body = std::str::from_utf8(body).map_err(|e| {
+            debug!("{}", e);
+            NotHttpRequestError {}
+        })?;
+
+        debug!("Lambda invocation event body:\n{}", body);
+
+        match serde_json::from_str(body) {
             Ok(request @ alb::AlbTargetGroupRequest { .. }) => {
                 let response: alb::AlbTargetGroupResponse =
                     self.dispatch_alb_request(actor, request.into())?.into();
@@ -175,7 +182,7 @@ impl Dispatcher<'_> for HttpDispatcher {
             }
             _ => debug!("Not an ALB request"),
         };
-        match serde_json::from_slice(body) {
+        match serde_json::from_str(body) {
             Ok(request @ apigw::ApiGatewayProxyRequest { .. }) => {
                 let response: apigw::ApiGatewayProxyResponse =
                     self.dispatch_apigw_request(actor, request.into())?.into();
@@ -183,7 +190,7 @@ impl Dispatcher<'_> for HttpDispatcher {
             }
             _ => debug!("Not an API Gateway proxy request"),
         };
-        match serde_json::from_slice(body) {
+        match serde_json::from_str(body) {
             Ok(request @ apigw::ApiGatewayV2httpRequest { .. }) => {
                 let response: apigw::ApiGatewayV2httpResponse =
                     self.dispatch_apigwv2_request(actor, request.into())?.into();
