@@ -41,11 +41,11 @@ impl TryFrom<AlbTargetGroupRequestWrapper> for wascc_codec::http::Request {
             method: request
                 .0
                 .http_method
-                .ok_or(anyhow!("Missing method in ALB target group request"))?,
+                .ok_or_else(|| anyhow!("Missing method in ALB target group request"))?,
             path: request
                 .0
                 .path
-                .ok_or(anyhow!("Missing path in ALB target group request"))?,
+                .ok_or_else(|| anyhow!("Missing path in ALB target group request"))?,
             query_string,
             header: request.0.headers,
             body: match request.0.body {
@@ -112,11 +112,11 @@ impl TryFrom<ApiGatewayProxyRequestWrapper> for wascc_codec::http::Request {
             method: request
                 .0
                 .http_method
-                .ok_or(anyhow!("Missing method in API Gateway proxy request"))?,
+                .ok_or_else(|| anyhow!("Missing method in API Gateway proxy request"))?,
             path: request
                 .0
                 .path
-                .ok_or(anyhow!("Missing path in API Gateway proxy request"))?,
+                .ok_or_else(|| anyhow!("Missing path in API Gateway proxy request"))?,
             query_string,
             header: request.0.headers,
             body: match request.0.body {
@@ -184,13 +184,13 @@ impl TryFrom<ApiGatewayV2ProxyRequestWrapper> for wascc_codec::http::Request {
                 .request_context
                 .http
                 .method
-                .ok_or(anyhow!("Missing method in API Gateway v2 proxy request"))?,
+                .ok_or_else(|| anyhow!("Missing method in API Gateway v2 proxy request"))?,
             path: request
                 .0
                 .request_context
                 .http
                 .path
-                .ok_or(anyhow!("Missing path in API Gateway v2 proxy request"))?,
+                .ok_or_else(|| anyhow!("Missing path in API Gateway v2 proxy request"))?,
             query_string,
             header: request.0.headers,
             body: match request.0.body {
