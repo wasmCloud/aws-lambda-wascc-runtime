@@ -120,7 +120,7 @@ impl TryFrom<ApiGatewayProxyRequestWrapper> for wascc_codec::http::Request {
             query_string,
             header: request.0.headers,
             body: match request.0.body {
-                Some(s) if request.0.is_base64_encoded.is_some() => base64::decode(s)?,
+                Some(s) if request.0.is_base64_encoded.unwrap_or(false) => base64::decode(s)?,
                 Some(s) => s.into_bytes(),
                 None => vec![],
             },
@@ -258,3 +258,369 @@ fn query_string(qs: HashMap<String, String>) -> String {
 }
 
 // TODO Handle multi_value_query_string_parameters.
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::convert::TryInto;
+
+    #[test]
+    fn alb_target_group_request_wrapper_empty() {
+        let alb_request = alb::AlbTargetGroupRequest {
+            http_method: None,
+            path: None,
+            query_string_parameters: HashMap::new(),
+            multi_value_query_string_parameters: HashMap::new(),
+            headers: HashMap::new(),
+            multi_value_headers: HashMap::new(),
+            request_context: alb::AlbTargetGroupRequestContext {
+                elb: alb::ElbContext {
+                    target_group_arn: None,
+                },
+            },
+            is_base64_encoded: false,
+            body: None,
+        };
+        let result: Result<wascc_codec::http::Request, _> =
+            AlbTargetGroupRequestWrapper::from(alb_request).try_into();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn alb_target_group_request_wrapper_good() {
+        let mut qs = HashMap::new();
+        qs.insert("key1".into(), "value1".into());
+        let mut hdrs = HashMap::new();
+        hdrs.insert("accept".into(), "application/json".into());
+        let alb_request = alb::AlbTargetGroupRequest {
+            http_method: Some("GET".into()),
+            path: Some("/".into()),
+            query_string_parameters: qs,
+            multi_value_query_string_parameters: HashMap::new(),
+            headers: hdrs,
+            multi_value_headers: HashMap::new(),
+            request_context: alb::AlbTargetGroupRequestContext {
+                elb: alb::ElbContext {
+                    target_group_arn: None,
+                },
+            },
+            is_base64_encoded: false,
+            body: Some("Hello world".into()),
+        };
+        let result: Result<wascc_codec::http::Request, _> =
+            AlbTargetGroupRequestWrapper::from(alb_request).try_into();
+        assert!(result.is_ok());
+
+        let result = result.unwrap();
+        assert_eq!("GET", result.method);
+        assert_eq!("/", result.path);
+        assert_eq!("key1=value1", result.query_string);
+        assert_eq!(1, result.header.len());
+        assert!(result.header.contains_key("accept"));
+        assert_eq!("application/json", result.header.get("accept").unwrap());
+        assert_eq!("Hello world".as_bytes().to_vec(), result.body);
+    }
+
+    #[test]
+    fn alb_target_group_response_wrapper_good() {
+        let mut hdrs = HashMap::new();
+        hdrs.insert("server".into(), "test".into());
+        let http_response = wascc_codec::http::Response {
+            status_code: 200,
+            status: "OK".into(),
+            header: hdrs,
+            body: vec![],
+        };
+        let result: Result<AlbTargetGroupResponseWrapper, _> = http_response.try_into();
+        assert!(result.is_ok());
+
+        let result = result.unwrap().0;
+        assert_eq!(200, result.status_code);
+        assert_eq!(Some("OK".into()), result.status_description);
+        assert_eq!(1, result.headers.len());
+        assert!(result.headers.contains_key("server"));
+        assert_eq!("test", result.headers.get("server").unwrap());
+        assert_eq!(None, result.body);
+        assert!(!result.is_base64_encoded);
+    }
+
+    #[test]
+    fn api_gateway_proxy_request_wrapper_empty() {
+        let apigw_request = apigw::ApiGatewayProxyRequest {
+            resource: None,
+            path: None,
+            http_method: None,
+            headers: HashMap::new(),
+            multi_value_headers: HashMap::new(),
+            query_string_parameters: HashMap::new(),
+            multi_value_query_string_parameters: HashMap::new(),
+            path_parameters: HashMap::new(),
+            stage_variables: HashMap::new(),
+            request_context: apigw::ApiGatewayProxyRequestContext {
+                account_id: None,
+                resource_id: None,
+                operation_name: None,
+                stage: None,
+                request_id: None,
+                identity: apigw::ApiGatewayRequestIdentity {
+                    cognito_identity_pool_id: None,
+                    account_id: None,
+                    cognito_identity_id: None,
+                    caller: None,
+                    api_key: None,
+                    api_key_id: None,
+                    access_key: None,
+                    source_ip: None,
+                    cognito_authentication_type: None,
+                    cognito_authentication_provider: None,
+                    user_arn: None,
+                    user_agent: None,
+                    user: None,
+                },
+                resource_path: None,
+                authorizer: HashMap::new(),
+                http_method: None,
+                apiid: None,
+            },
+            body: None,
+            is_base64_encoded: None,
+        };
+        let result: Result<wascc_codec::http::Request, _> =
+            ApiGatewayProxyRequestWrapper::from(apigw_request).try_into();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn api_gateway_proxy_request_wrapper_good() {
+        let mut qs = HashMap::new();
+        qs.insert("key1".into(), "value1".into());
+        let mut hdrs = HashMap::new();
+        hdrs.insert("accept".into(), "application/json".into());
+        let apigw_request = apigw::ApiGatewayProxyRequest {
+            resource: None,
+            path: Some("/".into()),
+            http_method: Some("GET".into()),
+            headers: hdrs,
+            multi_value_headers: HashMap::new(),
+            query_string_parameters: qs,
+            multi_value_query_string_parameters: HashMap::new(),
+            path_parameters: HashMap::new(),
+            stage_variables: HashMap::new(),
+            request_context: apigw::ApiGatewayProxyRequestContext {
+                account_id: None,
+                resource_id: None,
+                operation_name: None,
+                stage: None,
+                request_id: None,
+                identity: apigw::ApiGatewayRequestIdentity {
+                    cognito_identity_pool_id: None,
+                    account_id: None,
+                    cognito_identity_id: None,
+                    caller: None,
+                    api_key: None,
+                    api_key_id: None,
+                    access_key: None,
+                    source_ip: None,
+                    cognito_authentication_type: None,
+                    cognito_authentication_provider: None,
+                    user_arn: None,
+                    user_agent: None,
+                    user: None,
+                },
+                resource_path: None,
+                authorizer: HashMap::new(),
+                http_method: None,
+                apiid: None,
+            },
+            body: Some("Hello world".into()),
+            is_base64_encoded: Some(false),
+        };
+        let result: Result<wascc_codec::http::Request, _> =
+            ApiGatewayProxyRequestWrapper::from(apigw_request).try_into();
+        assert!(result.is_ok());
+
+        let result = result.unwrap();
+        assert_eq!("GET", result.method);
+        assert_eq!("/", result.path);
+        assert_eq!("key1=value1", result.query_string);
+        assert_eq!(1, result.header.len());
+        assert!(result.header.contains_key("accept"));
+        assert_eq!("application/json", result.header.get("accept").unwrap());
+        assert_eq!("Hello world".as_bytes().to_vec(), result.body);
+    }
+
+    #[test]
+    fn api_gateway_proxy_response_wrapper_good() {
+        let mut hdrs = HashMap::new();
+        hdrs.insert("server".into(), "test".into());
+        let http_response = wascc_codec::http::Response {
+            status_code: 200,
+            status: "OK".into(),
+            header: hdrs,
+            body: vec![],
+        };
+        let result: Result<ApiGatewayProxyResponseWrapper, _> = http_response.try_into();
+        assert!(result.is_ok());
+
+        let result = result.unwrap().0;
+        assert_eq!(200, result.status_code);
+        assert_eq!(1, result.headers.len());
+        assert!(result.headers.contains_key("server"));
+        assert_eq!("test", result.headers.get("server").unwrap());
+        assert_eq!(None, result.body);
+        assert_eq!(Some(false), result.is_base64_encoded);
+    }
+
+    #[test]
+    fn api_gatewayv2_proxy_request_wrapper_empty() {
+        let apigw_request = apigw::ApiGatewayV2httpRequest {
+            version: None,
+            route_key: None,
+            raw_path: None,
+            raw_query_string: None,
+            cookies: None,
+            headers: HashMap::new(),
+            query_string_parameters: HashMap::new(),
+            path_parameters: HashMap::new(),
+            request_context: apigw::ApiGatewayV2httpRequestContext {
+                route_key: None,
+                account_id: None,
+                stage: None,
+                request_id: None,
+                authorizer: None,
+                apiid: None,
+                domain_name: None,
+                domain_prefix: None,
+                time: None,
+                time_epoch: 0,
+                http: apigw::ApiGatewayV2httpRequestContextHttpDescription {
+                    method: None,
+                    path: None,
+                    protocol: None,
+                    source_ip: None,
+                    user_agent: None,
+                },
+            },
+            stage_variables: HashMap::new(),
+            body: None,
+            is_base64_encoded: false,
+        };
+        let result: Result<wascc_codec::http::Request, _> =
+            ApiGatewayV2ProxyRequestWrapper::from(apigw_request).try_into();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn api_gatewayv2_proxy_request_wrapper_good() {
+        let mut qs = HashMap::new();
+        qs.insert("key1".into(), "value1".into());
+        let mut hdrs = HashMap::new();
+        hdrs.insert("accept".into(), "application/json".into());
+        let apigw_request = apigw::ApiGatewayV2httpRequest {
+            version: Some("2.0".into()),
+            route_key: None,
+            raw_path: None,
+            raw_query_string: None,
+            cookies: None,
+            headers: hdrs,
+            query_string_parameters: qs,
+            path_parameters: HashMap::new(),
+            request_context: apigw::ApiGatewayV2httpRequestContext {
+                route_key: None,
+                account_id: None,
+                stage: None,
+                request_id: None,
+                authorizer: None,
+                apiid: None,
+                domain_name: None,
+                domain_prefix: None,
+                time: None,
+                time_epoch: 0,
+                http: apigw::ApiGatewayV2httpRequestContextHttpDescription {
+                    method: Some("GET".into()),
+                    path: Some("/".into()),
+                    protocol: None,
+                    source_ip: None,
+                    user_agent: None,
+                },
+            },
+            stage_variables: HashMap::new(),
+            body: Some("Hello world".into()),
+            is_base64_encoded: false,
+        };
+        let result: Result<wascc_codec::http::Request, _> =
+            ApiGatewayV2ProxyRequestWrapper::from(apigw_request).try_into();
+        assert!(result.is_ok());
+
+        let result = result.unwrap();
+        assert_eq!("GET", result.method);
+        assert_eq!("/", result.path);
+        assert_eq!("key1=value1", result.query_string);
+        assert_eq!(1, result.header.len());
+        assert!(result.header.contains_key("accept"));
+        assert_eq!("application/json", result.header.get("accept").unwrap());
+        assert_eq!("Hello world".as_bytes().to_vec(), result.body);
+    }
+
+    #[test]
+    fn api_gatewayv2_proxy_response_wrapper_good() {
+        let mut hdrs = HashMap::new();
+        hdrs.insert("server".into(), "test".into());
+        let http_response = wascc_codec::http::Response {
+            status_code: 200,
+            status: "OK".into(),
+            header: hdrs,
+            body: vec![],
+        };
+        let result: Result<ApiGatewayV2ProxyResponseWrapper, _> = http_response.try_into();
+        assert!(result.is_ok());
+
+        let result = result.unwrap().0;
+        assert_eq!(200, result.status_code);
+        assert_eq!(1, result.headers.len());
+        assert!(result.headers.contains_key("server"));
+        assert_eq!("test", result.headers.get("server").unwrap());
+        assert_eq!(None, result.body);
+        assert_eq!(Some(false), result.is_base64_encoded);
+    }
+
+    #[test]
+    fn body_string_empty() {
+        assert_eq!((None, false), body_string(vec![]));
+    }
+
+    #[test]
+    fn body_string_text() {
+        assert_eq!(
+            (Some("abc".into()), false),
+            body_string(vec![b'a', b'b', b'c'])
+        );
+    }
+
+    #[test]
+    fn body_string_base64() {
+        assert_eq!(
+            (Some("gYKD".into()), true),
+            body_string(vec![0x81, 0x82, 0x83])
+        );
+    }
+
+    #[test]
+    fn query_string_empty() {
+        assert_eq!("", query_string(HashMap::new()));
+    }
+
+    #[test]
+    fn query_string_single() {
+        let mut m = HashMap::new();
+        m.insert("key1".into(), "value1".into());
+        assert_eq!("key1=value1", query_string(m));
+    }
+
+    #[test]
+    fn query_string_single_with_special() {
+        let mut m = HashMap::new();
+        m.insert("key1".into(), "val e1".into());
+        assert_eq!("key1=val+e1", query_string(m));
+    }
+}
