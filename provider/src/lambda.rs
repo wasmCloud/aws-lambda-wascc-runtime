@@ -146,7 +146,7 @@ impl InvocationEvent {
     /// Creates a new `InvocationEvent` with the specified body.
     pub fn new(body: Vec<u8>) -> Self {
         InvocationEvent {
-            body: body,
+            body,
             request_id: None,
             trace_id: None,
         }
@@ -172,7 +172,7 @@ impl InvocationResponse {
     /// Creates a new `InvocationResponse` with the specified body and request ID.
     pub fn new(body: Vec<u8>, request_id: &str) -> Self {
         InvocationResponse {
-            body: body,
+            body,
             request_id: request_id.into(),
         }
     }
@@ -182,7 +182,7 @@ impl InvocationError {
     /// Creates a new `InvocationError` with the specified error and request ID.
     pub fn new(error: anyhow::Error, request_id: &str) -> Self {
         InvocationError {
-            error: error,
+            error,
             request_id: request_id.into(),
         }
     }
