@@ -48,7 +48,10 @@ fn main() -> anyhow::Result<()> {
         info!("Logger already intialized");
     }
 
-    info!("aws-lambda-wascc-runtime {} starting", env!("CARGO_PKG_VERSION"));
+    info!(
+        "aws-lambda-wascc-runtime {} starting",
+        env!("CARGO_PKG_VERSION")
+    );
 
     let host = WasccHost::new();
 
