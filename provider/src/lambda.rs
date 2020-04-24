@@ -39,24 +39,38 @@ pub(crate) struct InvocationError {
 }
 
 /// Represents an AWS Lambda runtime client.
-pub(crate) struct Client {
+pub(crate) trait Client {
+    /// Returns the next AWS Lambda invocation event.
+    fn next_invocation_event(&self) -> anyhow::Result<Option<InvocationEvent>>;
+
+    /// Sends an invocation error to the AWS Lambda runtime.
+    fn send_invocation_error(&self, error: InvocationError) -> anyhow::Result<()>;
+
+    /// Sends an invocation error to the AWS Lambda runtime.
+    fn send_invocation_response(&self, resp: InvocationResponse) -> anyhow::Result<()>;
+}
+
+/// Represents an AWS Lambda runtime client.
+pub(crate) struct RuntimeClient {
     endpoint: String,
     http_client: reqwest::blocking::Client,
     user_agent: String,
 }
 
-impl Client {
+impl RuntimeClient {
     /// Creates a new `RuntimeClient` with the specified AWS Lambda runtime API endpoint.
     pub fn new(endpoint: &str) -> Self {
-        Client {
+        Self {
             endpoint: endpoint.into(),
             http_client: reqwest::blocking::Client::new(),
             user_agent: format!("AWS_Lambda_waSCC/{}", env!("CARGO_PKG_VERSION")),
         }
     }
+}
 
+impl Client for RuntimeClient {
     /// Returns the next AWS Lambda invocation event.
-    pub fn next_invocation_event(&self) -> anyhow::Result<Option<InvocationEvent>> {
+    fn next_invocation_event(&self) -> anyhow::Result<Option<InvocationEvent>> {
         // https://docs.aws.amazon.com/lambda/latest/dg/runtimes-api.html#runtimes-api-next
         let url = format!(
             "http://{}/2018-06-01/runtime/invocation/next",
@@ -92,7 +106,7 @@ impl Client {
     }
 
     /// Sends an invocation error to the AWS Lambda runtime.
-    pub fn send_invocation_error(&self, error: InvocationError) -> anyhow::Result<()> {
+    fn send_invocation_error(&self, error: InvocationError) -> anyhow::Result<()> {
         // https://docs.aws.amazon.com/lambda/latest/dg/runtimes-api.html#runtimes-api-invokeerror
         let url = format!(
             "http://{}/2018-06-01/runtime/invocation/{}/error",
@@ -118,7 +132,7 @@ impl Client {
     }
 
     /// Sends an invocation response to the AWS Lambda runtime.
-    pub fn send_invocation_response(&self, resp: InvocationResponse) -> anyhow::Result<()> {
+    fn send_invocation_response(&self, resp: InvocationResponse) -> anyhow::Result<()> {
         // https://docs.aws.amazon.com/lambda/latest/dg/runtimes-api.html#runtimes-api-response
         let url = format!(
             "http://{}/2018-06-01/runtime/invocation/{}/response",
@@ -145,7 +159,7 @@ impl Client {
 impl InvocationEvent {
     /// Creates a new `InvocationEvent` with the specified body.
     pub fn new(body: Vec<u8>) -> Self {
-        InvocationEvent {
+        Self {
             body,
             request_id: None,
             trace_id: None,
@@ -171,7 +185,7 @@ impl InvocationEvent {
 impl InvocationResponse {
     /// Creates a new `InvocationResponse` with the specified body and request ID.
     pub fn new(body: Vec<u8>, request_id: &str) -> Self {
-        InvocationResponse {
+        Self {
             body,
             request_id: request_id.into(),
         }
@@ -181,7 +195,7 @@ impl InvocationResponse {
 impl InvocationError {
     /// Creates a new `InvocationError` with the specified error and request ID.
     pub fn new(error: anyhow::Error, request_id: &str) -> Self {
-        InvocationError {
+        Self {
             error,
             request_id: request_id.into(),
         }

@@ -35,6 +35,8 @@ use crate::dispatch::{
     Dispatcher, DispatcherError, HttpDispatcher, NotHttpRequestError, RawEventDispatcher,
 };
 
+use crate::lambda::{Client, RuntimeClient};
+
 mod dispatch;
 mod http;
 mod lambda;
@@ -43,28 +45,100 @@ const CAPABILITY_ID: &str = "awslambda:runtime";
 
 // This capability provider is designed to be statically linked into its host.
 
-/// Represents a waSCC AWS Lambda runtime provider.
-pub struct AwsLambdaRuntimeProvider {
-    dispatcher: Arc<RwLock<Box<dyn wascc_codec::capabilities::Dispatcher>>>,
-    shutdown: Arc<RwLock<HashMap<String, bool>>>,
+/// Represents a shared host dispatcher.
+pub(crate) type HostDispatcher = Arc<RwLock<Box<dyn wascc_codec::capabilities::Dispatcher>>>;
+
+/// Represents a shared shutdown map, module_id => shutdown_flag.
+struct ShutdownMap {
+    map: Arc<RwLock<HashMap<String, bool>>>,
 }
 
-/// Polls the Lambda event machinery.
-struct Poller {
-    client: lambda::Client,
-    dispatcher: Arc<RwLock<Box<dyn wascc_codec::capabilities::Dispatcher>>>,
+impl ShutdownMap {
+    /// Creates a new, empty `ShutdownMap`.
+    fn new() -> Self {
+        Self {
+            map: Arc::new(RwLock::new(HashMap::new())),
+        }
+    }
+
+    /// Returns whether the shutdown flag has been set for the specified module.
+    fn get(&self, module_id: &str) -> anyhow::Result<bool> {
+        Ok(*self
+            .map
+            .read()
+            .map_err(|e| anyhow!("{}", e))?
+            .get(module_id)
+            .ok_or_else(|| anyhow!("Unknown actor {}", module_id))?)
+    }
+
+    /// Puts the shutdown flag value for the specified module.
+    /// Any previous value is overwritten.
+    fn put(&self, module_id: &str, flag: bool) -> anyhow::Result<()> {
+        self.map
+            .write()
+            .map_err(|e| anyhow!("{}", e))?
+            .insert(module_id.into(), flag);
+
+        Ok(())
+    }
+
+    /// Puts the shutdown flag value for the specified module if present.
+    /// The previous value is overwritten.
+    /// Returns whether a value was present.
+    fn put_if_present(&self, module_id: &str, flag: bool) -> anyhow::Result<bool> {
+        let mut lock = self.map.write().map_err(|e| anyhow!("{}", e))?;
+        if !lock.contains_key(module_id) {
+            return Ok(false);
+        }
+        *lock
+            .get_mut(module_id)
+            .ok_or_else(|| anyhow!("Unknown actor {}", module_id))? = flag;
+
+        Ok(true)
+    }
+
+    /// Removes any flag value for the specified module.
+    fn remove(&self, module_id: &str) -> anyhow::Result<()> {
+        self.map
+            .write()
+            .map_err(|e| anyhow!("{}", e))?
+            .remove(module_id);
+
+        Ok(())
+    }
+}
+
+impl Clone for ShutdownMap {
+    /// Returns a copy of the value.
+    fn clone(&self) -> Self {
+        Self {
+            map: Arc::clone(&self.map),
+        }
+    }
+}
+
+/// Represents a waSCC AWS Lambda runtime provider.
+pub struct AwsLambdaRuntimeProvider {
+    host_dispatcher: HostDispatcher,
+    shutdown_map: ShutdownMap,
+}
+
+/// Polls the Lambda event machinery using the specified client.
+struct Poller<C> {
+    client: C,
     module_id: String,
-    shutdown: Arc<RwLock<HashMap<String, bool>>>,
+    host_dispatcher: HostDispatcher,
+    shutdown_map: ShutdownMap,
 }
 
 impl Default for AwsLambdaRuntimeProvider {
-    // Returns the default value for `AwsLambdaRuntimeProvider`.
+    /// Returns the default value for `AwsLambdaRuntimeProvider`.
     fn default() -> Self {
-        AwsLambdaRuntimeProvider {
-            dispatcher: Arc::new(RwLock::new(Box::new(
+        Self {
+            host_dispatcher: Arc::new(RwLock::new(Box::new(
                 wascc_codec::capabilities::NullDispatcher::new(),
             ))),
-            shutdown: Arc::new(RwLock::new(HashMap::new())),
+            shutdown_map: ShutdownMap::new(),
         }
     }
 }
@@ -79,7 +153,7 @@ impl AwsLambdaRuntimeProvider {
     fn start_polling(&self, config: CapabilityConfiguration) -> anyhow::Result<()> {
         debug!("awslambda:runtime start_polling");
 
-        let dispatcher = Arc::clone(&self.dispatcher);
+        let host_dispatcher = Arc::clone(&self.host_dispatcher);
         let endpoint = match config.values.get("AWS_LAMBDA_RUNTIME_API") {
             Some(ep) => String::from(ep),
             None => {
@@ -89,14 +163,25 @@ impl AwsLambdaRuntimeProvider {
             }
         };
         let module_id = config.module;
-        let shutdown = Arc::clone(&self.shutdown);
+        let shutdown_map = self.shutdown_map.clone();
         thread::spawn(move || {
             info!("Starting poller for actor {}", module_id);
 
-            // Initialize this poller's shutdown flag.
-            shutdown.write().unwrap().insert(module_id.clone(), false);
+            // Initialize this module's shutdown flag.
+            match shutdown_map.put(&module_id, false) {
+                Ok(_) => {}
+                Err(e) => {
+                    error!("{}", e);
+                    return;
+                }
+            };
 
-            let poller = Poller::new(&module_id, &endpoint, dispatcher, shutdown);
+            let poller = Poller::new(
+                &module_id,
+                RuntimeClient::new(&endpoint),
+                host_dispatcher,
+                shutdown_map,
+            );
             poller.run();
         });
 
@@ -108,21 +193,14 @@ impl AwsLambdaRuntimeProvider {
         debug!("awslambda:runtime stop_polling");
 
         let module_id = &config.module;
-        {
-            let mut lock = self.shutdown.write().unwrap();
-            if !lock.contains_key(module_id) {
-                error!(
-                    "Received request to stop poller for unknown actor {}. Ignoring",
-                    module_id
-                );
-                return Ok(());
-            }
-            *lock.get_mut(module_id).unwrap() = true;
+        if !self.shutdown_map.put_if_present(module_id, false)? {
+            error!(
+                "Received request to stop poller for unknown actor {}. Ignoring",
+                module_id
+            );
+            return Ok(());
         }
-        {
-            let mut lock = self.shutdown.write().unwrap();
-            lock.remove(module_id).unwrap();
-        }
+        self.shutdown_map.remove(module_id)?;
 
         Ok(())
     }
@@ -141,7 +219,7 @@ impl CapabilityProvider for AwsLambdaRuntimeProvider {
     ) -> Result<(), Box<dyn Error>> {
         debug!("awslambda:runtime configure_dispatch");
 
-        let mut lock = self.dispatcher.write().unwrap();
+        let mut lock = self.host_dispatcher.write().unwrap();
         *lock = dispatcher;
 
         Ok(())
@@ -166,26 +244,26 @@ impl CapabilityProvider for AwsLambdaRuntimeProvider {
     }
 }
 
-impl Poller {
+impl<T: Client> Poller<T> {
     /// Creates a new `Poller`.
     fn new(
         module_id: &str,
-        endpoint: &str,
-        dispatcher: Arc<RwLock<Box<dyn wascc_codec::capabilities::Dispatcher>>>,
-        shutdown: Arc<RwLock<HashMap<String, bool>>>,
+        client: T,
+        host_dispatcher: HostDispatcher,
+        shutdown_map: ShutdownMap,
     ) -> Self {
-        Poller {
-            client: lambda::Client::new(endpoint),
-            dispatcher,
+        Self {
+            client,
             module_id: module_id.into(),
-            shutdown,
+            host_dispatcher,
+            shutdown_map,
         }
     }
 
     /// Runs the poller until shutdown.
     fn run(&self) {
-        let http_dispatcher = HttpDispatcher::new(Arc::clone(&self.dispatcher));
-        let raw_event_dispatcher = RawEventDispatcher::new(Arc::clone(&self.dispatcher));
+        let http_dispatcher = HttpDispatcher::new(Arc::clone(&self.host_dispatcher));
+        let raw_event_dispatcher = RawEventDispatcher::new(Arc::clone(&self.host_dispatcher));
 
         loop {
             if self.shutdown() {
@@ -290,6 +368,63 @@ impl Poller {
 
     /// Returns whether the shutdown flag is set.
     fn shutdown(&self) -> bool {
-        *self.shutdown.read().unwrap().get(&self.module_id).unwrap()
+        match self.shutdown_map.get(&self.module_id) {
+            Ok(f) => f,
+            Err(e) => {
+                error!("{}", e);
+                true
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::lambda::{InvocationError, InvocationEvent, InvocationResponse};
+
+    const MODULE_ID: &str = "m";
+
+    struct MockClient;
+
+    impl MockClient {
+        fn new() -> Self {
+            Self
+        }
+    }
+
+    impl Client for MockClient {
+        /// Returns the next AWS Lambda invocation event.
+        fn next_invocation_event(&self) -> anyhow::Result<Option<InvocationEvent>> {
+            Ok(Some(InvocationEvent::new(vec![])))
+        }
+
+        /// Sends an invocation error to the AWS Lambda runtime.
+        fn send_invocation_error(&self, _: InvocationError) -> anyhow::Result<()> {
+            Ok(())
+        }
+
+        /// Sends an invocation error to the AWS Lambda runtime.
+        fn send_invocation_response(&self, _: InvocationResponse) -> anyhow::Result<()> {
+            Ok(())
+        }
+    }
+
+    /// Returns a mock poller.
+    fn mock_poller() -> Poller<MockClient> {
+        let host_dispatcher: HostDispatcher = Arc::new(RwLock::new(Box::new(
+            wascc_codec::capabilities::NullDispatcher::new(),
+        )));
+        let shutdown_map = ShutdownMap::new();
+        Poller::new(MODULE_ID, MockClient::new(), host_dispatcher, shutdown_map)
+    }
+
+    #[test]
+    fn one_success() {
+        let poller = mock_poller();
+        let result = poller.shutdown_map.put(MODULE_ID, true);
+        assert!(result.is_ok());
+
+        poller.run();
     }
 }

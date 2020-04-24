@@ -21,13 +21,14 @@ use serde::{Deserialize, Serialize};
 use wascc_codec::{deserialize, serialize};
 
 use std::convert::TryInto;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 
 use crate::http::{
     AlbTargetGroupRequestWrapper, AlbTargetGroupResponseWrapper, ApiGatewayProxyRequestWrapper,
     ApiGatewayProxyResponseWrapper, ApiGatewayV2ProxyRequestWrapper,
     ApiGatewayV2ProxyResponseWrapper,
 };
+use crate::HostDispatcher;
 
 /// A dispatcher error.
 #[derive(thiserror::Error, Debug)]
@@ -74,8 +75,8 @@ pub(crate) trait Dispatcher<'de> {
         })?;
 
         let handler_resp = {
-            let dispatcher = self.dispatcher();
-            let lock = dispatcher.read().unwrap();
+            let host_dispatcher = self.host_dispatcher();
+            let lock = host_dispatcher.read().unwrap();
             lock.dispatch(actor, Self::OP, &input)
         };
         let output = handler_resp.map_err(|e| DispatcherError::NotDispatched {
@@ -93,8 +94,8 @@ pub(crate) trait Dispatcher<'de> {
         Ok(response)
     }
 
-    /// Returns a dispatcher.
-    fn dispatcher(&self) -> Arc<RwLock<Box<dyn wascc_codec::capabilities::Dispatcher>>>;
+    /// Returns a shared host dispatcher.
+    fn host_dispatcher(&self) -> HostDispatcher;
 
     /// Attempts to dispatch a Lambda invocation event, returning an invocation response.
     /// The bodies of the invocation event and response are passed and returned.
@@ -108,13 +109,13 @@ pub(crate) struct NotHttpRequestError;
 
 /// Dispatches HTTP requests.
 pub(crate) struct HttpDispatcher {
-    dispatcher: Arc<RwLock<Box<dyn wascc_codec::capabilities::Dispatcher>>>,
+    host_dispatcher: HostDispatcher,
 }
 
 impl HttpDispatcher {
     /// Returns a new `HttpDispatcher`.
-    pub fn new(dispatcher: Arc<RwLock<Box<dyn wascc_codec::capabilities::Dispatcher>>>) -> Self {
-        HttpDispatcher { dispatcher }
+    pub fn new(host_dispatcher: HostDispatcher) -> Self {
+        Self { host_dispatcher }
     }
 
     /// Dispatches an ALB target group request.
@@ -155,13 +156,17 @@ impl HttpDispatcher {
 }
 
 impl Dispatcher<'_> for HttpDispatcher {
+    /// The request type.
     type T = wascc_codec::http::Request;
+    /// The response type.
     type U = wascc_codec::http::Response;
 
+    /// The operation this dispatcher dispatches.
     const OP: &'static str = wascc_codec::http::OP_HANDLE_REQUEST;
 
-    fn dispatcher(&self) -> Arc<RwLock<Box<dyn wascc_codec::capabilities::Dispatcher>>> {
-        Arc::clone(&self.dispatcher)
+    /// Returns a shared host dispatcher.
+    fn host_dispatcher(&self) -> HostDispatcher {
+        Arc::clone(&self.host_dispatcher)
     }
 
     /// Attempts to dispatch a Lambda invocation event, returning an invocation response.
@@ -205,24 +210,28 @@ impl Dispatcher<'_> for HttpDispatcher {
 
 /// Dispatches Lambda raw events.
 pub(crate) struct RawEventDispatcher {
-    dispatcher: Arc<RwLock<Box<dyn wascc_codec::capabilities::Dispatcher>>>,
+    host_dispatcher: HostDispatcher,
 }
 
 impl RawEventDispatcher {
     /// Returns a new `RawEventDispatcher`.
-    pub fn new(dispatcher: Arc<RwLock<Box<dyn wascc_codec::capabilities::Dispatcher>>>) -> Self {
-        RawEventDispatcher { dispatcher }
+    pub fn new(host_dispatcher: HostDispatcher) -> Self {
+        Self { host_dispatcher }
     }
 }
 
 impl Dispatcher<'_> for RawEventDispatcher {
+    /// The request type.
     type T = codec::Event;
+    /// The response type.
     type U = codec::Response;
 
+    /// The operation this dispatcher dispatches.
     const OP: &'static str = codec::OP_HANDLE_EVENT;
 
-    fn dispatcher(&self) -> Arc<RwLock<Box<dyn wascc_codec::capabilities::Dispatcher>>> {
-        Arc::clone(&self.dispatcher)
+    /// Returns a shared host dispatcher.
+    fn host_dispatcher(&self) -> HostDispatcher {
+        Arc::clone(&self.host_dispatcher)
     }
 
     /// Attempts to dispatch a Lambda invocation event, returning an invocation response.
