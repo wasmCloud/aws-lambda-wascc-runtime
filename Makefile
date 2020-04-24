@@ -22,7 +22,7 @@ fmt:
 	$(CARGO) fmt
 
 release:
-	docker run --user "$(id -u)":"$(id -g)" --volume $(PWD):/volume --rm --tty $(BUILDER) cargo build --release
+	docker run --user $(shell id -u):$(shell id -g) --volume $(PWD):/volume --rm --tty $(BUILDER) cargo build --release
 
 test: build
 	$(CARGO) fmt --all -- --check
