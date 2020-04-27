@@ -17,7 +17,6 @@
 //
 
 use reqwest::header::USER_AGENT;
-use serde_json;
 
 /// Represents an invocation event.
 pub(crate) struct InvocationEvent {
