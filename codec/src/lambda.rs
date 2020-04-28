@@ -16,8 +16,6 @@
 // waSCC AWS Lambda Runtime Codec
 //
 
-use serde_json;
-
 pub const OP_HANDLE_EVENT: &str = "HandleEvent";
 
 /// Describes an event received from AWS Lambda.
