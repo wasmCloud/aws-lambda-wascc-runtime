@@ -381,50 +381,259 @@ impl<T: Client> Poller<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::lambda::{InvocationError, InvocationEvent, InvocationResponse};
+    use crate::lambda::{
+        InvocationError, InvocationEvent, InvocationEventBuilder, InvocationResponse,
+    };
+    use serde::Serialize;
+    use std::any::Any;
+    use std::cell::RefCell;
+    use wascc_codec::serialize;
 
-    const MODULE_ID: &str = "m";
+    const ERROR_MESSAGE: &str = "ERROR";
+    const EVENT_BODY: &'static [u8] = b"EVENT BODY";
+    const MODULE_ID: &str = "MODULE ID";
+    const REQUEST_ID: &str = "REQUEST ID";
+    const RESPONSE_BODY: &'static [u8] = b"RESPONSE BODY";
 
-    struct MockClient;
+    /// Represents a mock `HostDispatcher`
+    struct MockHostDispatcher<T> {
+        /// The dispatcher response.
+        response: T,
+    }
+
+    impl<T> MockHostDispatcher<T> {
+        /// Returns a new `MockHostDispatcher`.
+        pub fn new(response: T) -> Self {
+            Self { response }
+        }
+    }
+
+    impl<T: Any + Serialize + Send + Sync> wascc_codec::capabilities::Dispatcher
+        for MockHostDispatcher<T>
+    {
+        fn dispatch(
+            &self,
+            _actor: &str,
+            _op: &str,
+            _msg: &[u8],
+        ) -> Result<Vec<u8>, Box<dyn Error>> {
+            Ok(serialize(&self.response)?)
+        }
+    }
+
+    /// Represents a `HostDispatcher` that returns an error.
+    struct ErrorDispatcher {}
+
+    impl ErrorDispatcher {
+        /// Returns a new `ErrorDispatcher`.
+        fn new() -> Self {
+            Self {}
+        }
+    }
+
+    impl wascc_codec::capabilities::Dispatcher for ErrorDispatcher {
+        fn dispatch(
+            &self,
+            _actor: &str,
+            _op: &str,
+            _msg: &[u8],
+        ) -> Result<Vec<u8>, Box<dyn Error>> {
+            Err(anyhow!(ERROR_MESSAGE).into())
+        }
+    }
+
+    /// Represents the event kind to return.
+    enum EventKind {
+        /// No event.
+        None,
+        /// An invocation event.
+        Event(InvocationEvent),
+        /// An error.
+        Error,
+    }
+
+    /// Represents a mock Lambda runtime client that returns a single event.
+    struct MockClient {
+        event_kind: EventKind,
+        invocation_error: RefCell<Option<InvocationError>>,
+        invocation_response: RefCell<Option<InvocationResponse>>,
+        shutdown_map: ShutdownMap,
+    }
 
     impl MockClient {
-        fn new() -> Self {
-            Self
+        /// Returns a new `MockClient`.
+        fn new(event_kind: EventKind, shutdown_map: ShutdownMap) -> Self {
+            Self {
+                event_kind,
+                invocation_error: RefCell::new(None),
+                invocation_response: RefCell::new(None),
+                shutdown_map,
+            }
         }
     }
 
     impl Client for MockClient {
         /// Returns the next AWS Lambda invocation event.
         fn next_invocation_event(&self) -> anyhow::Result<Option<InvocationEvent>> {
-            Ok(Some(InvocationEvent::new(vec![])))
+            // Shutdown after one event.
+            self.shutdown_map.put(MODULE_ID, true)?;
+
+            match &self.event_kind {
+                EventKind::None => Ok(None),
+                EventKind::Event(event) => Ok(Some(event.clone())),
+                EventKind::Error => Err(anyhow!(ERROR_MESSAGE)),
+            }
         }
 
         /// Sends an invocation error to the AWS Lambda runtime.
-        fn send_invocation_error(&self, _: InvocationError) -> anyhow::Result<()> {
+        fn send_invocation_error(&self, error: InvocationError) -> anyhow::Result<()> {
+            *self.invocation_error.borrow_mut() = Some(error);
             Ok(())
         }
 
         /// Sends an invocation error to the AWS Lambda runtime.
-        fn send_invocation_response(&self, _: InvocationResponse) -> anyhow::Result<()> {
+        fn send_invocation_response(&self, response: InvocationResponse) -> anyhow::Result<()> {
+            *self.invocation_response.borrow_mut() = Some(response);
             Ok(())
+        }
+    }
+
+    impl InvocationEvent {
+        /// Returns an `InvocationEvent` with no request ID.
+        fn no_request_id() -> Self {
+            InvocationEventBuilder::new(EVENT_BODY.to_vec()).build()
+        }
+
+        /// Return an `InvocationEvent` with a request ID.
+        fn with_request_id() -> Self {
+            let mut builder = InvocationEventBuilder::new(EVENT_BODY.to_vec());
+            builder = builder.request_id(REQUEST_ID);
+            builder.build()
         }
     }
 
     /// Returns a mock poller.
-    fn mock_poller() -> Poller<MockClient> {
-        let host_dispatcher: HostDispatcher = Arc::new(RwLock::new(Box::new(
-            wascc_codec::capabilities::NullDispatcher::new(),
-        )));
+    fn mock_poller(event_kind: EventKind) -> Poller<MockClient> {
+        let response = codec::Response {
+            body: RESPONSE_BODY.to_vec(),
+        };
+        let host_dispatcher: HostDispatcher =
+            Arc::new(RwLock::new(Box::new(MockHostDispatcher::new(response))));
         let shutdown_map = ShutdownMap::new();
-        Poller::new(MODULE_ID, MockClient::new(), host_dispatcher, shutdown_map)
+        Poller::new(
+            MODULE_ID,
+            MockClient::new(event_kind, shutdown_map.clone()),
+            host_dispatcher,
+            shutdown_map,
+        )
     }
 
+    /// Returns a mock poller with a host dispatcher that returns errors.
+    fn mock_poller_with_error_dispatcher(event_kind: EventKind) -> Poller<MockClient> {
+        let host_dispatcher: HostDispatcher =
+            Arc::new(RwLock::new(Box::new(ErrorDispatcher::new())));
+        let shutdown_map = ShutdownMap::new();
+        Poller::new(
+            MODULE_ID,
+            MockClient::new(event_kind, shutdown_map.clone()),
+            host_dispatcher,
+            shutdown_map,
+        )
+    }
+
+    /// Tests that receiving an empty event sends no response or error.
     #[test]
-    fn one_success() {
-        let poller = mock_poller();
-        let result = poller.shutdown_map.put(MODULE_ID, true);
+    fn event_kind_none() {
+        let poller = mock_poller(EventKind::None);
+        let result = poller.shutdown_map.put(MODULE_ID, false);
         assert!(result.is_ok());
 
         poller.run();
+
+        assert!(poller.client.invocation_response.borrow().is_none());
+        assert!(poller.client.invocation_error.borrow().is_none());
+    }
+
+    /// Tests that receiving an event without a request ID sends no response or error.
+    #[test]
+    fn event_kind_event_no_request_id() {
+        let poller = mock_poller(EventKind::Event(InvocationEvent::no_request_id()));
+        let result = poller.shutdown_map.put(MODULE_ID, false);
+        assert!(result.is_ok());
+
+        poller.run();
+
+        assert!(poller.client.invocation_response.borrow().is_none());
+        assert!(poller.client.invocation_error.borrow().is_none());
+    }
+
+    /// Tests that receiving an event with a request ID sends a response.
+    #[test]
+    fn event_kind_event_with_request_id() {
+        let poller = mock_poller(EventKind::Event(InvocationEvent::with_request_id()));
+        let result = poller.shutdown_map.put(MODULE_ID, false);
+        assert!(result.is_ok());
+
+        poller.run();
+
+        assert!(poller.client.invocation_response.borrow().is_some());
+        assert_eq!(
+            REQUEST_ID,
+            poller
+                .client
+                .invocation_response
+                .borrow()
+                .as_ref()
+                .unwrap()
+                .request_id()
+        );
+        assert_eq!(
+            RESPONSE_BODY,
+            poller
+                .client
+                .invocation_response
+                .borrow()
+                .as_ref()
+                .unwrap()
+                .body()
+        );
+        assert!(poller.client.invocation_error.borrow().is_none());
+    }
+
+    /// Tests that receiving an event with a request ID and dispatching with an error sends an error.
+    #[test]
+    fn event_kind_event_with_request_id_error_dispatcher() {
+        let poller =
+            mock_poller_with_error_dispatcher(EventKind::Event(InvocationEvent::with_request_id()));
+        let result = poller.shutdown_map.put(MODULE_ID, false);
+        assert!(result.is_ok());
+
+        poller.run();
+
+        assert!(poller.client.invocation_response.borrow().is_none());
+        assert!(poller.client.invocation_error.borrow().is_some());
+        assert_eq!(
+            REQUEST_ID,
+            poller
+                .client
+                .invocation_error
+                .borrow()
+                .as_ref()
+                .unwrap()
+                .request_id()
+        );
+    }
+
+    /// Tests that receiving an error sends no response or error.
+    #[test]
+    fn event_kind_error() {
+        let poller = mock_poller(EventKind::Error);
+        let result = poller.shutdown_map.put(MODULE_ID, false);
+        assert!(result.is_ok());
+
+        poller.run();
+
+        assert!(poller.client.invocation_response.borrow().is_none());
+        assert!(poller.client.invocation_error.borrow().is_none());
     }
 }
