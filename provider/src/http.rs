@@ -21,6 +21,7 @@ use aws_lambda_events::event::{alb, apigw};
 use std::collections::HashMap;
 use std::convert::TryFrom;
 
+#[derive(Debug)]
 pub(crate) struct AlbTargetGroupRequestWrapper(alb::AlbTargetGroupRequest);
 
 impl From<alb::AlbTargetGroupRequest> for AlbTargetGroupRequestWrapper {
@@ -57,6 +58,7 @@ impl TryFrom<AlbTargetGroupRequestWrapper> for wascc_codec::http::Request {
     }
 }
 
+#[derive(Debug)]
 pub(crate) struct AlbTargetGroupResponseWrapper(alb::AlbTargetGroupResponse);
 
 impl From<AlbTargetGroupResponseWrapper> for alb::AlbTargetGroupResponse {
@@ -92,6 +94,7 @@ impl TryFrom<wascc_codec::http::Response> for AlbTargetGroupResponseWrapper {
     }
 }
 
+#[derive(Debug)]
 pub(crate) struct ApiGatewayProxyRequestWrapper(apigw::ApiGatewayProxyRequest);
 
 impl From<apigw::ApiGatewayProxyRequest> for ApiGatewayProxyRequestWrapper {
@@ -128,6 +131,7 @@ impl TryFrom<ApiGatewayProxyRequestWrapper> for wascc_codec::http::Request {
     }
 }
 
+#[derive(Debug)]
 pub(crate) struct ApiGatewayProxyResponseWrapper(apigw::ApiGatewayProxyResponse);
 
 impl From<ApiGatewayProxyResponseWrapper> for apigw::ApiGatewayProxyResponse {
@@ -162,6 +166,7 @@ impl TryFrom<wascc_codec::http::Response> for ApiGatewayProxyResponseWrapper {
     }
 }
 
+#[derive(Debug)]
 pub(crate) struct ApiGatewayV2ProxyRequestWrapper(apigw::ApiGatewayV2httpRequest);
 
 impl From<apigw::ApiGatewayV2httpRequest> for ApiGatewayV2ProxyRequestWrapper {
@@ -202,6 +207,7 @@ impl TryFrom<ApiGatewayV2ProxyRequestWrapper> for wascc_codec::http::Request {
     }
 }
 
+#[derive(Debug)]
 pub(crate) struct ApiGatewayV2ProxyResponseWrapper(apigw::ApiGatewayV2httpResponse);
 
 impl From<ApiGatewayV2ProxyResponseWrapper> for apigw::ApiGatewayV2httpResponse {
@@ -262,28 +268,8 @@ fn query_string(qs: HashMap<String, String>) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::tests_common::*;
     use std::convert::TryInto;
-
-    /// Returns a query string map for a request.
-    fn request_query_string() -> HashMap<String, String> {
-        let mut qs = HashMap::new();
-        qs.insert("key1".into(), "value1".into());
-        qs
-    }
-
-    /// Returns an HTTP headers map for a request.
-    fn request_headers() -> HashMap<String, String> {
-        let mut hdrs = HashMap::new();
-        hdrs.insert("accept".into(), "application/json".into());
-        hdrs
-    }
-
-    /// Returns an HTTP headers map for a response.
-    fn response_headers() -> HashMap<String, String> {
-        let mut hdrs = HashMap::new();
-        hdrs.insert("server".into(), "test".into());
-        hdrs
-    }
 
     /// Returns an empty `AlbTargetGroupRequest`.
     fn empty_alb_target_group_request() -> alb::AlbTargetGroupRequest {
@@ -301,35 +287,6 @@ mod tests {
             },
             is_base64_encoded: false,
             body: None,
-        }
-    }
-
-    /// Returns a valid `AlbTargetGroupRequest`.
-    fn valid_alb_target_group_request() -> alb::AlbTargetGroupRequest {
-        alb::AlbTargetGroupRequest {
-            http_method: Some("GET".into()),
-            path: Some("/".into()),
-            query_string_parameters: request_query_string(),
-            multi_value_query_string_parameters: HashMap::new(),
-            headers: request_headers(),
-            multi_value_headers: HashMap::new(),
-            request_context: alb::AlbTargetGroupRequestContext {
-                elb: alb::ElbContext {
-                    target_group_arn: None,
-                },
-            },
-            is_base64_encoded: false,
-            body: Some("Hello world".into()),
-        }
-    }
-
-    /// Returns a valid `http::Response`.
-    fn valid_http_response() -> wascc_codec::http::Response {
-        wascc_codec::http::Response {
-            status_code: 200,
-            status: "OK".into(),
-            header: response_headers(),
-            body: vec![],
         }
     }
 
@@ -376,49 +333,6 @@ mod tests {
         }
     }
 
-    /// Returns a valid `ApiGatewayProxyRequest`.
-    fn valid_api_gateway_proxy_request() -> apigw::ApiGatewayProxyRequest {
-        apigw::ApiGatewayProxyRequest {
-            resource: None,
-            path: Some("/".into()),
-            http_method: Some("GET".into()),
-            headers: request_headers(),
-            multi_value_headers: HashMap::new(),
-            query_string_parameters: request_query_string(),
-            multi_value_query_string_parameters: HashMap::new(),
-            path_parameters: HashMap::new(),
-            stage_variables: HashMap::new(),
-            request_context: apigw::ApiGatewayProxyRequestContext {
-                account_id: None,
-                resource_id: None,
-                operation_name: None,
-                stage: None,
-                request_id: None,
-                identity: apigw::ApiGatewayRequestIdentity {
-                    cognito_identity_pool_id: None,
-                    account_id: None,
-                    cognito_identity_id: None,
-                    caller: None,
-                    api_key: None,
-                    api_key_id: None,
-                    access_key: None,
-                    source_ip: None,
-                    cognito_authentication_type: None,
-                    cognito_authentication_provider: None,
-                    user_arn: None,
-                    user_agent: None,
-                    user: None,
-                },
-                resource_path: None,
-                authorizer: HashMap::new(),
-                http_method: None,
-                apiid: None,
-            },
-            body: Some("Hello world".into()),
-            is_base64_encoded: Some(false),
-        }
-    }
-
     /// Returns an empty `ApiGatewayV2httpRequest`.
     fn empty_api_gatewayv2_proxy_request() -> apigw::ApiGatewayV2httpRequest {
         apigw::ApiGatewayV2httpRequest {
@@ -451,42 +365,6 @@ mod tests {
             },
             stage_variables: HashMap::new(),
             body: None,
-            is_base64_encoded: false,
-        }
-    }
-
-    /// Returns a valid `ApiGatewayV2httpRequest`.
-    fn valid_api_gatewayv2_proxy_request() -> apigw::ApiGatewayV2httpRequest {
-        apigw::ApiGatewayV2httpRequest {
-            version: Some("2.0".into()),
-            route_key: None,
-            raw_path: None,
-            raw_query_string: None,
-            cookies: None,
-            headers: request_headers(),
-            query_string_parameters: request_query_string(),
-            path_parameters: HashMap::new(),
-            request_context: apigw::ApiGatewayV2httpRequestContext {
-                route_key: None,
-                account_id: None,
-                stage: None,
-                request_id: None,
-                authorizer: None,
-                apiid: None,
-                domain_name: None,
-                domain_prefix: None,
-                time: None,
-                time_epoch: 0,
-                http: apigw::ApiGatewayV2httpRequestContextHttpDescription {
-                    method: Some("GET".into()),
-                    path: Some("/".into()),
-                    protocol: None,
-                    source_ip: None,
-                    user_agent: None,
-                },
-            },
-            stage_variables: HashMap::new(),
-            body: Some("Hello world".into()),
             is_base64_encoded: false,
         }
     }

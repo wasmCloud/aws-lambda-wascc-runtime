@@ -244,3 +244,285 @@ impl Dispatcher<'_> for RawEventDispatcher {
         Ok(self.dispatch_request(actor, raw_event)?.body)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::tests_common::*;
+    use std::sync::RwLock;
+
+    /// Tests successfully dispatching a raw event.
+    #[test]
+    fn dispatch_raw_event_ok() {
+        let response = codec::Response {
+            body: RESPONSE_BODY.to_vec(),
+        };
+        let host_dispatcher: HostDispatcher =
+            Arc::new(RwLock::new(Box::new(MockHostDispatcher::new(response))));
+        let dispatcher = RawEventDispatcher::new(host_dispatcher);
+
+        let result = dispatcher.dispatch_invocation_event(MODULE_ID, EVENT_BODY);
+        assert!(result.is_ok());
+        assert_eq!(RESPONSE_BODY, result.unwrap().as_slice());
+    }
+
+    /// Tests failing to dispatch an event.
+    #[test]
+    fn dispatch_raw_event_not_dispatched_error() {
+        let host_dispatcher: HostDispatcher =
+            Arc::new(RwLock::new(Box::new(ErrorHostDispatcher::new())));
+        let dispatcher = RawEventDispatcher::new(host_dispatcher);
+
+        let result = dispatcher.dispatch_invocation_event(MODULE_ID, EVENT_BODY);
+        assert!(result.is_err());
+
+        let e = result.unwrap_err();
+        assert!(e.is::<DispatcherError>());
+        match e.downcast_ref::<DispatcherError>().unwrap() {
+            DispatcherError::NotDispatched { .. } => assert!(true),
+            _ => assert!(false),
+        }
+    }
+
+    /// Tests failing to deserialize an event response.
+    #[test]
+    fn dispatch_raw_event_response_deserialization_error() {
+        let host_dispatcher: HostDispatcher = Arc::new(RwLock::new(Box::new(
+            MockHostDispatcher::new(RESPONSE_BODY),
+        )));
+        let dispatcher = RawEventDispatcher::new(host_dispatcher);
+
+        let result = dispatcher.dispatch_invocation_event(MODULE_ID, EVENT_BODY);
+        assert!(result.is_err());
+
+        let e = result.unwrap_err();
+        assert!(e.is::<DispatcherError>());
+        match e.downcast_ref::<DispatcherError>().unwrap() {
+            DispatcherError::ResponseDeserialization { .. } => assert!(true),
+            _ => assert!(false),
+        }
+    }
+
+    /// Tests successfully dispatching an ALB target group request.
+    #[test]
+    fn dispatch_alb_target_group_request_ok() {
+        let response = valid_http_response();
+        let host_dispatcher: HostDispatcher =
+            Arc::new(RwLock::new(Box::new(MockHostDispatcher::new(response))));
+        let dispatcher = HttpDispatcher::new(host_dispatcher);
+
+        let result =
+            dispatcher.dispatch_alb_request(MODULE_ID, valid_alb_target_group_request().into());
+        assert!(result.is_ok());
+    }
+
+    /// Tests failing to dispatch an ALB target group request.
+    #[test]
+    fn dispatch_alb_target_group_request_not_dispatched_error() {
+        let host_dispatcher: HostDispatcher =
+            Arc::new(RwLock::new(Box::new(ErrorHostDispatcher::new())));
+        let dispatcher = HttpDispatcher::new(host_dispatcher);
+
+        let result =
+            dispatcher.dispatch_alb_request(MODULE_ID, valid_alb_target_group_request().into());
+        assert!(result.is_err());
+
+        let e = result.unwrap_err();
+        assert!(e.is::<DispatcherError>());
+        match e.downcast_ref::<DispatcherError>().unwrap() {
+            DispatcherError::NotDispatched { .. } => assert!(true),
+            _ => assert!(false),
+        }
+    }
+
+    /// Tests failing to deserialize an ALB target group request.
+    #[test]
+    fn dispatch_alb_target_group_deserialization_error() {
+        let host_dispatcher: HostDispatcher = Arc::new(RwLock::new(Box::new(
+            MockHostDispatcher::new(RESPONSE_BODY),
+        )));
+        let dispatcher = HttpDispatcher::new(host_dispatcher);
+
+        let result =
+            dispatcher.dispatch_alb_request(MODULE_ID, valid_alb_target_group_request().into());
+        assert!(result.is_err());
+
+        let e = result.unwrap_err();
+        assert!(e.is::<DispatcherError>());
+        match e.downcast_ref::<DispatcherError>().unwrap() {
+            DispatcherError::ResponseDeserialization { .. } => assert!(true),
+            _ => assert!(false),
+        }
+    }
+
+    /// Tests successfully dispatching an API Gateway proxy request.
+    #[test]
+    fn dispatch_api_gateway_proxy_request_ok() {
+        let response = valid_http_response();
+        let host_dispatcher: HostDispatcher =
+            Arc::new(RwLock::new(Box::new(MockHostDispatcher::new(response))));
+        let dispatcher = HttpDispatcher::new(host_dispatcher);
+
+        let result =
+            dispatcher.dispatch_apigw_request(MODULE_ID, valid_api_gateway_proxy_request().into());
+        assert!(result.is_ok());
+    }
+
+    /// Tests failing to dispatch an API Gateway proxy request.
+    #[test]
+    fn dispatch_api_gateway_proxy_request_not_dispatched_error() {
+        let host_dispatcher: HostDispatcher =
+            Arc::new(RwLock::new(Box::new(ErrorHostDispatcher::new())));
+        let dispatcher = HttpDispatcher::new(host_dispatcher);
+
+        let result =
+            dispatcher.dispatch_apigw_request(MODULE_ID, valid_api_gateway_proxy_request().into());
+        assert!(result.is_err());
+
+        let e = result.unwrap_err();
+        assert!(e.is::<DispatcherError>());
+        match e.downcast_ref::<DispatcherError>().unwrap() {
+            DispatcherError::NotDispatched { .. } => assert!(true),
+            _ => assert!(false),
+        }
+    }
+
+    /// Tests failing to deserialize an API Gateway proxy request.
+    #[test]
+    fn dispatch_api_gateway_proxy_request_deserialization_error() {
+        let host_dispatcher: HostDispatcher = Arc::new(RwLock::new(Box::new(
+            MockHostDispatcher::new(RESPONSE_BODY),
+        )));
+        let dispatcher = HttpDispatcher::new(host_dispatcher);
+
+        let result =
+            dispatcher.dispatch_apigw_request(MODULE_ID, valid_api_gateway_proxy_request().into());
+        assert!(result.is_err());
+
+        let e = result.unwrap_err();
+        assert!(e.is::<DispatcherError>());
+        match e.downcast_ref::<DispatcherError>().unwrap() {
+            DispatcherError::ResponseDeserialization { .. } => assert!(true),
+            _ => assert!(false),
+        }
+    }
+
+    /// Tests successfully dispatching an API Gateway v2 proxy request.
+    #[test]
+    fn dispatch_api_gatewayv2_proxy_request_ok() {
+        let response = valid_http_response();
+        let host_dispatcher: HostDispatcher =
+            Arc::new(RwLock::new(Box::new(MockHostDispatcher::new(response))));
+        let dispatcher = HttpDispatcher::new(host_dispatcher);
+
+        let result = dispatcher
+            .dispatch_apigwv2_request(MODULE_ID, valid_api_gatewayv2_proxy_request().into());
+        assert!(result.is_ok());
+    }
+
+    /// Tests failing to dispatch an API Gateway v2 proxy request.
+    #[test]
+    fn dispatch_api_gatewayv2_proxy_request_not_dispatched_error() {
+        let host_dispatcher: HostDispatcher =
+            Arc::new(RwLock::new(Box::new(ErrorHostDispatcher::new())));
+        let dispatcher = HttpDispatcher::new(host_dispatcher);
+
+        let result = dispatcher
+            .dispatch_apigwv2_request(MODULE_ID, valid_api_gatewayv2_proxy_request().into());
+        assert!(result.is_err());
+
+        let e = result.unwrap_err();
+        assert!(e.is::<DispatcherError>());
+        match e.downcast_ref::<DispatcherError>().unwrap() {
+            DispatcherError::NotDispatched { .. } => assert!(true),
+            _ => assert!(false),
+        }
+    }
+
+    /// Tests failing to deserialize an API Gateway v2 proxy request.
+    #[test]
+    fn dispatch_api_gatewayv2_proxy_request_deserialization_error() {
+        let host_dispatcher: HostDispatcher = Arc::new(RwLock::new(Box::new(
+            MockHostDispatcher::new(RESPONSE_BODY),
+        )));
+        let dispatcher = HttpDispatcher::new(host_dispatcher);
+
+        let result = dispatcher
+            .dispatch_apigwv2_request(MODULE_ID, valid_api_gatewayv2_proxy_request().into());
+        assert!(result.is_err());
+
+        let e = result.unwrap_err();
+        assert!(e.is::<DispatcherError>());
+        match e.downcast_ref::<DispatcherError>().unwrap() {
+            DispatcherError::ResponseDeserialization { .. } => assert!(true),
+            _ => assert!(false),
+        }
+    }
+
+    /// Tests successfully dispatching an ALB target group request encoded as JSON.
+    #[test]
+    fn dispatch_alb_target_group_request_json_ok() {
+        let response = valid_http_response();
+        let host_dispatcher: HostDispatcher =
+            Arc::new(RwLock::new(Box::new(MockHostDispatcher::new(response))));
+        let dispatcher = HttpDispatcher::new(host_dispatcher);
+
+        let result = serde_json::to_vec(&valid_alb_target_group_request());
+        assert!(result.is_ok());
+        let body = result.unwrap();
+
+        let result = dispatcher.dispatch_invocation_event(MODULE_ID, &body);
+        assert!(result.is_ok());
+    }
+
+    /// Tests successfully dispatching an API Gateway proxy request encoded as JSON.
+    #[test]
+    fn dispatch_api_gateway_proxy_request_json_ok() {
+        let response = valid_http_response();
+        let host_dispatcher: HostDispatcher =
+            Arc::new(RwLock::new(Box::new(MockHostDispatcher::new(response))));
+        let dispatcher = HttpDispatcher::new(host_dispatcher);
+
+        let result = serde_json::to_vec(&valid_api_gateway_proxy_request());
+        assert!(result.is_ok());
+        let body = result.unwrap();
+
+        let result = dispatcher.dispatch_invocation_event(MODULE_ID, &body);
+        assert!(result.is_ok());
+    }
+
+    /// Tests successfully dispatching an API Gateway v2 proxy request encoded as JSON.
+    #[test]
+    fn dispatch_api_gatewayv2_proxy_request_json_ok() {
+        let response = valid_http_response();
+        let host_dispatcher: HostDispatcher =
+            Arc::new(RwLock::new(Box::new(MockHostDispatcher::new(response))));
+        let dispatcher = HttpDispatcher::new(host_dispatcher);
+
+        let result = serde_json::to_vec(&valid_api_gatewayv2_proxy_request());
+        assert!(result.is_ok());
+        let body = result.unwrap();
+
+        let result = dispatcher.dispatch_invocation_event(MODULE_ID, &body);
+        assert!(result.is_ok());
+    }
+
+    /// Tests failing to dispatch a raw event as an HTTP-like request.
+    #[test]
+    fn dispatch_raw_event_json_not_http_error() {
+        let response = valid_http_response();
+        let host_dispatcher: HostDispatcher =
+            Arc::new(RwLock::new(Box::new(MockHostDispatcher::new(response))));
+        let dispatcher = HttpDispatcher::new(host_dispatcher);
+
+        let result = serde_json::to_vec(EVENT_BODY);
+        assert!(result.is_ok());
+        let body = result.unwrap();
+
+        let result = dispatcher.dispatch_invocation_event(MODULE_ID, &body);
+        assert!(result.is_err());
+
+        let e = result.unwrap_err();
+        assert!(e.is::<NotHttpRequestError>());
+    }
+}
