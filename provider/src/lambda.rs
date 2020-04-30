@@ -17,51 +17,57 @@
 //
 
 use reqwest::header::USER_AGENT;
-use serde_json;
 
-/// Represents an invocation event.
-pub(crate) struct InvocationEvent {
-    body: Vec<u8>,
-    request_id: Option<String>,
-    trace_id: Option<String>,
-}
+const REQUEST_ID_HEADER_NAME: &str = "Lambda-Runtime-Aws-Request-Id";
+const TRACE_ID_HEADER_NAME: &str = "Lambda-Runtime-Trace-Id";
 
-/// Represents an invocation response.
-pub(crate) struct InvocationResponse {
-    body: Vec<u8>,
-    request_id: String,
-}
+/// Represents an AWS Lambda runtime client.
+pub(crate) trait Client {
+    /// Returns the next AWS Lambda invocation event.
+    fn next_invocation_event(&self) -> anyhow::Result<Option<InvocationEvent>>;
 
-/// Represents an invocation error.
-pub(crate) struct InvocationError {
-    error: anyhow::Error,
-    request_id: String,
+    /// Sends an invocation error to the AWS Lambda runtime.
+    fn send_invocation_error(&self, error: InvocationError) -> anyhow::Result<()>;
+
+    /// Sends an invocation error to the AWS Lambda runtime.
+    fn send_invocation_response(&self, resp: InvocationResponse) -> anyhow::Result<()>;
 }
 
 /// Represents an AWS Lambda runtime client.
-pub(crate) struct Client {
+pub(crate) struct RuntimeClient {
     endpoint: String,
     http_client: reqwest::blocking::Client,
     user_agent: String,
 }
 
-impl Client {
+impl RuntimeClient {
     /// Creates a new `RuntimeClient` with the specified AWS Lambda runtime API endpoint.
     pub fn new(endpoint: &str) -> Self {
-        Client {
+        Self {
             endpoint: endpoint.into(),
             http_client: reqwest::blocking::Client::new(),
             user_agent: format!("AWS_Lambda_waSCC/{}", env!("CARGO_PKG_VERSION")),
         }
     }
 
+    fn next_invocation_event_path() -> String {
+        "2018-06-01/runtime/invocation/next".into()
+    }
+
+    fn invocation_error_path(request_id: &str) -> String {
+        format!("2018-06-01/runtime/invocation/{}/error", request_id)
+    }
+
+    fn invocation_response_path(request_id: &str) -> String {
+        format!("2018-06-01/runtime/invocation/{}/response", request_id)
+    }
+}
+
+impl Client for RuntimeClient {
     /// Returns the next AWS Lambda invocation event.
-    pub fn next_invocation_event(&self) -> anyhow::Result<Option<InvocationEvent>> {
+    fn next_invocation_event(&self) -> anyhow::Result<Option<InvocationEvent>> {
         // https://docs.aws.amazon.com/lambda/latest/dg/runtimes-api.html#runtimes-api-next
-        let url = format!(
-            "http://{}/2018-06-01/runtime/invocation/next",
-            self.endpoint
-        );
+        let url = format!("{}/{}", self.endpoint, Self::next_invocation_event_path());
         let mut resp = self
             .http_client
             .get(&url)
@@ -80,30 +86,32 @@ impl Client {
 
         let mut buf: Vec<u8> = vec![];
         resp.copy_to(&mut buf)?;
-        let mut event = InvocationEvent::new(buf);
-        if let Some(request_id) = resp.headers().get("Lambda-Runtime-Aws-Request-Id") {
-            event.request_id = Some(request_id.to_str()?.into());
+
+        let mut builder = InvocationEventBuilder::new(buf);
+        if let Some(request_id) = resp.headers().get(REQUEST_ID_HEADER_NAME) {
+            builder = builder.request_id(request_id.to_str()?);
         }
-        if let Some(trace_id) = resp.headers().get("Lambda-Runtime-Trace-Id") {
-            event.trace_id = Some(trace_id.to_str()?.into());
+        if let Some(trace_id) = resp.headers().get(TRACE_ID_HEADER_NAME) {
+            builder = builder.trace_id(trace_id.to_str()?);
         }
 
-        Ok(Some(event))
+        Ok(Some(builder.build()))
     }
 
     /// Sends an invocation error to the AWS Lambda runtime.
-    pub fn send_invocation_error(&self, error: InvocationError) -> anyhow::Result<()> {
+    fn send_invocation_error(&self, error: InvocationError) -> anyhow::Result<()> {
         // https://docs.aws.amazon.com/lambda/latest/dg/runtimes-api.html#runtimes-api-invokeerror
         let url = format!(
-            "http://{}/2018-06-01/runtime/invocation/{}/error",
-            self.endpoint, error.request_id
+            "{}/{}",
+            self.endpoint,
+            Self::invocation_error_path(error.request_id())
         );
         let resp = self
             .http_client
             .post(&url)
             .header(USER_AGENT, self.user_agent.clone())
             .json(&serde_json::json!({
-                "errorMessage": error.error.to_string(),
+                "errorMessage": error.error_message(),
             }))
             .send()?;
         let status = resp.status();
@@ -118,17 +126,18 @@ impl Client {
     }
 
     /// Sends an invocation response to the AWS Lambda runtime.
-    pub fn send_invocation_response(&self, resp: InvocationResponse) -> anyhow::Result<()> {
+    fn send_invocation_response(&self, resp: InvocationResponse) -> anyhow::Result<()> {
         // https://docs.aws.amazon.com/lambda/latest/dg/runtimes-api.html#runtimes-api-response
         let url = format!(
-            "http://{}/2018-06-01/runtime/invocation/{}/response",
-            self.endpoint, resp.request_id
+            "{}/{}",
+            self.endpoint,
+            Self::invocation_response_path(resp.request_id())
         );
         let resp = self
             .http_client
             .post(&url)
             .header(USER_AGENT, self.user_agent.clone())
-            .body(resp.body)
+            .body(resp.body().to_owned())
             .send()?;
         let status = resp.status();
         info!(
@@ -142,16 +151,15 @@ impl Client {
     }
 }
 
-impl InvocationEvent {
-    /// Creates a new `InvocationEvent` with the specified body.
-    pub fn new(body: Vec<u8>) -> Self {
-        InvocationEvent {
-            body: body,
-            request_id: None,
-            trace_id: None,
-        }
-    }
+/// Represents an invocation event.
+#[derive(Clone)]
+pub(crate) struct InvocationEvent {
+    body: Vec<u8>,
+    request_id: Option<String>,
+    trace_id: Option<String>,
+}
 
+impl InvocationEvent {
     /// Returns the event body.
     pub fn body(&self) -> &Vec<u8> {
         self.body.as_ref()
@@ -168,22 +176,238 @@ impl InvocationEvent {
     }
 }
 
+/// Builds an `InvocationEvent`.
+pub(crate) struct InvocationEventBuilder {
+    body: Vec<u8>,
+    request_id: Option<String>,
+    trace_id: Option<String>,
+}
+
+impl InvocationEventBuilder {
+    /// Creates a new `InvocationEventBuilder` with the specified body.
+    pub fn new(body: Vec<u8>) -> Self {
+        Self {
+            body,
+            request_id: None,
+            trace_id: None,
+        }
+    }
+
+    /// Adds the specified request ID to the builder.
+    pub fn request_id(mut self, request_id: &str) -> Self {
+        self.request_id = Some(request_id.into());
+        self
+    }
+
+    /// Adds the specified trace ID to the builder.
+    pub fn trace_id(mut self, trace_id: &str) -> Self {
+        self.trace_id = Some(trace_id.into());
+        self
+    }
+
+    /// Builds an `InvocationEvent`, consuming this builder.
+    pub fn build(self) -> InvocationEvent {
+        InvocationEvent {
+            body: self.body,
+            request_id: self.request_id,
+            trace_id: self.trace_id,
+        }
+    }
+}
+
+/// Represents an invocation response.
+pub(crate) struct InvocationResponse {
+    body: Vec<u8>,
+    request_id: String,
+}
+
 impl InvocationResponse {
     /// Creates a new `InvocationResponse` with the specified body and request ID.
     pub fn new(body: Vec<u8>, request_id: &str) -> Self {
-        InvocationResponse {
-            body: body,
+        Self {
+            body,
             request_id: request_id.into(),
         }
     }
+
+    /// Returns the body.
+    pub fn body(&self) -> &[u8] {
+        self.body.as_slice()
+    }
+
+    /// Returns the request ID.
+    pub fn request_id(&self) -> &str {
+        self.request_id.as_str()
+    }
+}
+
+/// Represents an invocation error.
+pub(crate) struct InvocationError {
+    error: anyhow::Error,
+    request_id: String,
 }
 
 impl InvocationError {
     /// Creates a new `InvocationError` with the specified error and request ID.
     pub fn new(error: anyhow::Error, request_id: &str) -> Self {
-        InvocationError {
-            error: error,
+        Self {
+            error,
             request_id: request_id.into(),
         }
+    }
+
+    /// Returns the error message.
+    pub fn error_message(&self) -> String {
+        self.error.to_string()
+    }
+
+    /// Returns the request ID.
+    pub fn request_id(&self) -> &str {
+        self.request_id.as_str()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::tests_common::*;
+    use httptest::{matchers::*, responders::*, Expectation, Server};
+
+    /// Returns the server's endpoint.
+    fn endpoint(server: &Server) -> String {
+        let ep = server.url_str("");
+        ep.trim_end_matches('/').into()
+    }
+
+    #[test]
+    fn runtime_client_next_invocation_event_error() {
+        let server = Server::run();
+        server.expect(
+            Expectation::matching(all_of![
+                request::method("GET"),
+                request::path(format!("/{}", RuntimeClient::next_invocation_event_path()))
+            ])
+            .respond_with(status_code(400)),
+        );
+
+        let client = RuntimeClient::new(&endpoint(&server));
+        let result = client.next_invocation_event();
+        assert!(result.is_ok());
+        let event = result.unwrap();
+        assert!(event.is_none());
+    }
+
+    #[test]
+    fn runtime_client_next_invocation_event_empty() {
+        let server = Server::run();
+        server.expect(
+            Expectation::matching(all_of![
+                request::method("GET"),
+                request::path(format!("/{}", RuntimeClient::next_invocation_event_path()))
+            ])
+            .respond_with(status_code(200)),
+        );
+
+        let client = RuntimeClient::new(&endpoint(&server));
+        let result = client.next_invocation_event();
+        assert!(result.is_ok());
+        let event = result.unwrap();
+        assert!(event.is_some());
+        let event = event.unwrap();
+        assert_eq!(0, event.body().len());
+        assert!(event.request_id().is_none());
+        assert!(event.trace_id().is_none());
+    }
+
+    #[test]
+    fn runtime_client_next_invocation_event_with_body() {
+        let server = Server::run();
+        server.expect(
+            Expectation::matching(all_of![
+                request::method("GET"),
+                request::path(format!("/{}", RuntimeClient::next_invocation_event_path()))
+            ])
+            .respond_with(status_code(200).body(EVENT_BODY)),
+        );
+
+        let client = RuntimeClient::new(&endpoint(&server));
+        let result = client.next_invocation_event();
+        assert!(result.is_ok());
+        let event = result.unwrap();
+        assert!(event.is_some());
+        let event = event.unwrap();
+        assert_eq!(EVENT_BODY, event.body().as_slice());
+        assert!(event.request_id().is_none());
+        assert!(event.trace_id().is_none());
+    }
+
+    #[test]
+    fn runtime_client_next_invocation_event_with_body_and_request_and_trace_ids() {
+        let server = Server::run();
+        server.expect(
+            Expectation::matching(all_of![
+                request::method("GET"),
+                request::path(format!("/{}", RuntimeClient::next_invocation_event_path()))
+            ])
+            .respond_with(
+                status_code(200)
+                    .body(EVENT_BODY)
+                    .append_header(REQUEST_ID_HEADER_NAME, REQUEST_ID)
+                    .append_header(TRACE_ID_HEADER_NAME, TRACE_ID),
+            ),
+        );
+
+        let client = RuntimeClient::new(&endpoint(&server));
+        let result = client.next_invocation_event();
+        assert!(result.is_ok());
+        let event = result.unwrap();
+        assert!(event.is_some());
+        let event = event.unwrap();
+        assert_eq!(EVENT_BODY, event.body().as_slice());
+        assert!(event.request_id().is_some());
+        assert_eq!(REQUEST_ID, event.request_id().unwrap());
+        assert!(event.trace_id().is_some());
+        assert_eq!(TRACE_ID, event.trace_id().unwrap());
+    }
+
+    #[test]
+    fn runtime_client_send_invocation_response() {
+        let server = Server::run();
+        server.expect(
+            Expectation::matching(all_of![
+                request::method("POST"),
+                request::path(format!(
+                    "/{}",
+                    RuntimeClient::invocation_response_path(REQUEST_ID)
+                )),
+                request::body(RESPONSE_BODY),
+            ])
+            .respond_with(status_code(200)),
+        );
+
+        let client = RuntimeClient::new(&endpoint(&server));
+        let result = client
+            .send_invocation_response(InvocationResponse::new(RESPONSE_BODY.to_vec(), REQUEST_ID));
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn runtime_client_send_invocation_error() {
+        let server = Server::run();
+        server.expect(
+            Expectation::matching(all_of![
+                request::method("POST"),
+                request::path(format!(
+                    "/{}",
+                    RuntimeClient::invocation_error_path(REQUEST_ID)
+                )),
+            ])
+            .respond_with(status_code(200)),
+        );
+
+        let client = RuntimeClient::new(&endpoint(&server));
+        let result =
+            client.send_invocation_error(InvocationError::new(anyhow!(ERROR_MESSAGE), REQUEST_ID));
+        assert!(result.is_ok());
     }
 }

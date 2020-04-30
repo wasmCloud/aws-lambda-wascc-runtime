@@ -19,12 +19,10 @@
 #[macro_use]
 extern crate anyhow;
 
-use env_logger;
 use log::{info, warn};
 use provider::AwsLambdaRuntimeProvider;
 use std::collections::HashMap;
 use std::env;
-use std::error::Error;
 use wascc_codec::capabilities::CapabilityProvider;
 use wascc_host::{HostManifest, NativeCapability, WasccHost};
 use wascc_logging::LoggingProvider;
@@ -48,7 +46,10 @@ fn main() -> anyhow::Result<()> {
         info!("Logger already intialized");
     }
 
-    info!("aws-lambda-wascc-runtime {} starting", env!("CARGO_PKG_VERSION"));
+    info!(
+        "aws-lambda-wascc-runtime {} starting",
+        env!("CARGO_PKG_VERSION")
+    );
 
     let host = WasccHost::new();
 
@@ -111,9 +112,7 @@ fn autoconfigure_actors(host: &WasccHost, capability: Capability) {
             ),
             Err(e) => info!(
                 "Autoconfiguration skipped actor {} for capability {}: {}",
-                actor.0,
-                capability.id,
-                e.description()
+                actor.0, capability.id, e
             ),
         };
     }

@@ -18,3 +18,6 @@ aws_lambda_events = { git = "https://github.com/ewbankkit/aws-lambda-events", br
 base64 = "0.12.0"
 url = "2.1.1"
 thiserror = "1.0.15"
+
+[dev-dependencies]
+httptest = "0.13.1"

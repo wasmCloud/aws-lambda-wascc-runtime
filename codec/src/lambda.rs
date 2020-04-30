@@ -16,8 +16,6 @@
 // waSCC AWS Lambda Runtime Codec
 //
 
-use serde_json;
-
 pub const OP_HANDLE_EVENT: &str = "HandleEvent";
 
 /// Describes an event received from AWS Lambda.
@@ -39,16 +37,38 @@ pub struct Response {
 }
 
 impl Response {
+    /// Returns an empty response.
     pub fn empty() -> Response {
-        Response { body: vec![] }
+        Self::default()
     }
 
-    pub fn json<T>(v: &T) -> Result<Response, Box<dyn std::error::Error>>
+    /// Returns a response that contains the JSON serialization of an object.
+    pub fn json<T>(t: &T) -> Result<Response, Box<dyn std::error::Error>>
     where
         T: serde::ser::Serialize + ?Sized,
     {
         Ok(Response {
-            body: serde_json::to_vec(v)?,
+            body: serde_json::to_vec(t)?,
         })
+    }
+}
+
+impl Default for Response {
+    /// Returns the default value for `Response`.
+    /// The default Response is empty.
+    fn default() -> Self {
+        Response { body: vec![] }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn i32_json_response() {
+        let i: i32 = 42;
+        let result = Response::json(&i);
+        assert!(result.is_ok());
     }
 }
