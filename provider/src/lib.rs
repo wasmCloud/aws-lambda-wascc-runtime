@@ -155,7 +155,7 @@ impl AwsLambdaRuntimeProvider {
 
         let host_dispatcher = Arc::clone(&self.host_dispatcher);
         let endpoint = match config.values.get("AWS_LAMBDA_RUNTIME_API") {
-            Some(ep) => String::from(ep),
+            Some(ep) => format!("http://{}", ep),
             None => {
                 return Err(anyhow!(
                     "Missing configuration value: AWS_LAMBDA_RUNTIME_API"
@@ -390,10 +390,11 @@ mod tests_common {
     use std::error::Error;
 
     pub(crate) const ERROR_MESSAGE: &str = "ERROR";
-    pub(crate) const EVENT_BODY: &'static [u8] = b"EVENT BODY";
-    pub(crate) const MODULE_ID: &str = "MODULE ID";
-    pub(crate) const REQUEST_ID: &str = "REQUEST ID";
-    pub(crate) const RESPONSE_BODY: &'static [u8] = b"RESPONSE BODY";
+    pub(crate) const EVENT_BODY: &'static [u8] = b"EVENT_BODY";
+    pub(crate) const MODULE_ID: &str = "MODULE_ID";
+    pub(crate) const REQUEST_ID: &str = "REQUEST_ID";
+    pub(crate) const RESPONSE_BODY: &'static [u8] = b"RESPONSE_BODY";
+    pub(crate) const TRACE_ID: &str = "TRACE_ID";
 
     /// Represents a mock `HostDispatcher`
     pub(crate) struct MockHostDispatcher<T> {
