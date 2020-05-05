@@ -19,8 +19,8 @@
 #[macro_use]
 extern crate anyhow;
 
-use log::{info, warn};
-use provider::AwsLambdaRuntimeProvider;
+use log::{debug, info, warn};
+use provider::{initerr_reporter, AwsLambdaRuntimeProvider};
 use std::collections::HashMap;
 use std::env;
 use wascc_codec::capabilities::CapabilityProvider;
@@ -43,14 +43,28 @@ fn main() -> anyhow::Result<()> {
         .try_init()
         .is_err()
     {
-        info!("Logger already intialized");
+        debug!("Logger already intialized");
     }
 
     info!(
-        "aws-lambda-wascc-runtime {} starting",
+        "AWS Lambda waSCC Runtime {} starting",
         env!("CARGO_PKG_VERSION")
     );
 
+    let reporter = initerr_reporter(&env::var("AWS_LAMBDA_RUNTIME_API")?);
+
+    match load_and_run() {
+        Ok(_) => {}
+        Err(e) => reporter.send_initialization_error(e)?,
+    };
+
+    info!("AWS Lambda waSCC Runtime done");
+
+    Ok(())
+}
+
+/// Loads configuration and runs the waSCC actor system.
+fn load_and_run() -> anyhow::Result<()> {
     let host = WasccHost::new();
 
     let runtime = AwsLambdaRuntimeProvider::new();
@@ -85,8 +99,6 @@ fn main() -> anyhow::Result<()> {
 
     info!("Main thread park");
     std::thread::park();
-
-    info!("aws-lambda-wascc-runtime ending");
 
     Ok(())
 }
