@@ -51,7 +51,7 @@ fn main() -> anyhow::Result<()> {
         env!("CARGO_PKG_VERSION")
     );
 
-    let reporter = initerr_reporter(&env::var("AWS_LAMBDA_RUNTIME_API")?);
+    let reporter = initerr_reporter(&format!("http://{}", env::var("AWS_LAMBDA_RUNTIME_API")?));
 
     match load_and_run() {
         Ok(_) => {}
