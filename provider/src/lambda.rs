@@ -31,6 +31,15 @@ pub(crate) trait Client {
 
     /// Sends an invocation error to the AWS Lambda runtime.
     fn send_invocation_response(&self, resp: InvocationResponse) -> anyhow::Result<()>;
+
+    /// Sends an initialization error to the AWS Lambda runtime.
+    fn send_initialization_error(&self, error: InitializationError) -> anyhow::Result<()>;
+}
+
+/// Represents an AWS Lambda initialization error reporter.
+pub trait InitializationErrorReporter {
+    /// Sends an initialization error to the AWS Lambda runtime.
+    fn send_initialization_error(&self, error: anyhow::Error) -> anyhow::Result<()>;
 }
 
 /// Represents an AWS Lambda runtime client.
@@ -60,6 +69,10 @@ impl RuntimeClient {
 
     fn invocation_response_path(request_id: &str) -> String {
         format!("2018-06-01/runtime/invocation/{}/response", request_id)
+    }
+
+    fn initialization_error_path() -> String {
+        "2018-06-01/runtime/init/error".into()
     }
 }
 
@@ -112,6 +125,7 @@ impl Client for RuntimeClient {
             .header(USER_AGENT, self.user_agent.clone())
             .json(&serde_json::json!({
                 "errorMessage": error.error_message(),
+                "errorType": "InvocationError",
             }))
             .send()?;
         let status = resp.status();
@@ -149,6 +163,42 @@ impl Client for RuntimeClient {
 
         Ok(())
     }
+
+    /// Sends an initialization error to the AWS Lambda runtime.
+    fn send_initialization_error(&self, error: InitializationError) -> anyhow::Result<()> {
+        // https://docs.aws.amazon.com/lambda/latest/dg/runtimes-api.html#runtimes-api-initerror
+        let url = format!("{}/{}", self.endpoint, Self::initialization_error_path());
+        let resp = self
+            .http_client
+            .post(&url)
+            .header(USER_AGENT, self.user_agent.clone())
+            .json(&serde_json::json!({
+                "errorMessage": error.error_message(),
+                "errorType": "InitializationError",
+            }))
+            .send()?;
+        let status = resp.status();
+        info!(
+            "POST {} {} {}",
+            url,
+            status.as_str(),
+            status.canonical_reason().unwrap()
+        );
+
+        Ok(())
+    }
+}
+
+impl InitializationErrorReporter for RuntimeClient {
+    /// Sends an initialization error to the AWS Lambda runtime.
+    fn send_initialization_error(&self, error: anyhow::Error) -> anyhow::Result<()> {
+        <Self as Client>::send_initialization_error(&self, InitializationError::new(error))
+    }
+}
+
+/// Returns a new `InitializationErrorReporter` implementation.
+pub fn initerr_reporter(endpoint: &str) -> Box<dyn InitializationErrorReporter> {
+    Box::new(RuntimeClient::new(endpoint))
 }
 
 /// Represents an invocation event.
@@ -264,6 +314,23 @@ impl InvocationError {
     /// Returns the request ID.
     pub fn request_id(&self) -> &str {
         self.request_id.as_str()
+    }
+}
+
+/// Represents an initialization error.
+pub(crate) struct InitializationError {
+    error: anyhow::Error,
+}
+
+impl InitializationError {
+    /// Creates a new `InitializationError` with the specified error.
+    pub fn new(error: anyhow::Error) -> Self {
+        Self { error }
+    }
+
+    /// Returns the error message.
+    pub fn error_message(&self) -> String {
+        self.error.to_string()
     }
 }
 
@@ -408,6 +475,41 @@ mod tests {
         let client = RuntimeClient::new(&endpoint(&server));
         let result =
             client.send_invocation_error(InvocationError::new(anyhow!(ERROR_MESSAGE), REQUEST_ID));
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn runtime_client_send_initialization_error() {
+        let server = Server::run();
+        server.expect(
+            Expectation::matching(all_of![
+                request::method("POST"),
+                request::path(format!("/{}", RuntimeClient::initialization_error_path())),
+            ])
+            .respond_with(status_code(200)),
+        );
+
+        let client = RuntimeClient::new(&endpoint(&server));
+        let result = <RuntimeClient as Client>::send_initialization_error(
+            &client,
+            InitializationError::new(anyhow!(ERROR_MESSAGE)),
+        );
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn initialization_error_reporter_send_initialization_error() {
+        let server = Server::run();
+        server.expect(
+            Expectation::matching(all_of![
+                request::method("POST"),
+                request::path(format!("/{}", RuntimeClient::initialization_error_path())),
+            ])
+            .respond_with(status_code(200)),
+        );
+
+        let reporter = initerr_reporter(&endpoint(&server));
+        let result = reporter.send_initialization_error(anyhow!(ERROR_MESSAGE));
         assert!(result.is_ok());
     }
 }

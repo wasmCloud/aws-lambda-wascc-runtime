@@ -35,6 +35,7 @@ use crate::dispatch::{
     Dispatcher, DispatcherError, HttpDispatcher, NotHttpRequestError, RawEventDispatcher,
 };
 
+pub use crate::lambda::{initerr_reporter, InitializationErrorReporter};
 use crate::lambda::{Client, RuntimeClient};
 
 mod dispatch;
@@ -572,7 +573,8 @@ mod tests_common {
 mod tests {
     use super::*;
     use crate::lambda::{
-        InvocationError, InvocationEvent, InvocationEventBuilder, InvocationResponse,
+        InitializationError, InvocationError, InvocationEvent, InvocationEventBuilder,
+        InvocationResponse,
     };
     use std::cell::RefCell;
 
@@ -591,6 +593,7 @@ mod tests {
     /// Represents a mock Lambda runtime client that returns a single event.
     struct MockClient {
         event_kind: EventKind,
+        initialization_error: RefCell<Option<InitializationError>>,
         invocation_error: RefCell<Option<InvocationError>>,
         invocation_response: RefCell<Option<InvocationResponse>>,
         shutdown_map: ShutdownMap,
@@ -601,6 +604,7 @@ mod tests {
         fn new(event_kind: EventKind, shutdown_map: ShutdownMap) -> Self {
             Self {
                 event_kind,
+                initialization_error: RefCell::new(None),
                 invocation_error: RefCell::new(None),
                 invocation_response: RefCell::new(None),
                 shutdown_map,
@@ -630,6 +634,12 @@ mod tests {
         /// Sends an invocation error to the AWS Lambda runtime.
         fn send_invocation_response(&self, response: InvocationResponse) -> anyhow::Result<()> {
             *self.invocation_response.borrow_mut() = Some(response);
+            Ok(())
+        }
+
+        /// Sends an initialization error to the AWS Lambda runtime.
+        fn send_initialization_error(&self, error: InitializationError) -> anyhow::Result<()> {
+            *self.initialization_error.borrow_mut() = Some(error);
             Ok(())
         }
     }
@@ -686,6 +696,7 @@ mod tests {
 
         poller.run();
 
+        assert!(poller.client.initialization_error.borrow().is_none());
         assert!(poller.client.invocation_response.borrow().is_none());
         assert!(poller.client.invocation_error.borrow().is_none());
     }
@@ -699,6 +710,7 @@ mod tests {
 
         poller.run();
 
+        assert!(poller.client.initialization_error.borrow().is_none());
         assert!(poller.client.invocation_response.borrow().is_none());
         assert!(poller.client.invocation_error.borrow().is_none());
     }
@@ -712,6 +724,7 @@ mod tests {
 
         poller.run();
 
+        assert!(poller.client.initialization_error.borrow().is_none());
         assert!(poller.client.invocation_response.borrow().is_some());
         assert_eq!(
             REQUEST_ID,
@@ -746,6 +759,7 @@ mod tests {
 
         poller.run();
 
+        assert!(poller.client.initialization_error.borrow().is_none());
         assert!(poller.client.invocation_response.borrow().is_none());
         assert!(poller.client.invocation_error.borrow().is_some());
         assert_eq!(
@@ -769,6 +783,7 @@ mod tests {
 
         poller.run();
 
+        assert!(poller.client.initialization_error.borrow().is_none());
         assert!(poller.client.invocation_response.borrow().is_none());
         assert!(poller.client.invocation_error.borrow().is_none());
     }
