@@ -105,6 +105,18 @@ trait Dispatcher<'de> {
     fn host_dispatcher(&self) -> HostDispatcher;
 }
 
+/// Do-nothing dispatcher.
+#[derive(Default)]
+pub struct NullDispatcher;
+
+impl InvocationEventDispatcher for NullDispatcher {
+    /// Attempts to dispatch a Lambda invocation event, returning an invocation response.
+    /// The bodies of the invocation event and response are passed and returned.
+    fn dispatch_invocation_event(&self, _actor: &str, _body: &[u8]) -> anyhow::Result<Vec<u8>> {
+        unimplemented!()
+    }
+}
+
 /// The invocation request is not an HTTP request.
 #[derive(thiserror::Error, Debug)]
 #[error("Not an HTTP request")]
@@ -155,6 +167,15 @@ impl HttpDispatcher {
         Ok(self
             .dispatch_request(actor, request.try_into()?)?
             .try_into()?)
+    }
+}
+
+impl Clone for HttpDispatcher {
+    /// Returns a copy of the value.
+    fn clone(&self) -> Self {
+        Self {
+            host_dispatcher: Arc::clone(&self.host_dispatcher),
+        }
     }
 }
 
@@ -256,6 +277,15 @@ impl Dispatcher<'_> for EventDispatcher {
     /// Returns a shared host dispatcher.
     fn host_dispatcher(&self) -> HostDispatcher {
         Arc::clone(&self.host_dispatcher)
+    }
+}
+
+impl Clone for EventDispatcher {
+    /// Returns a copy of the value.
+    fn clone(&self) -> Self {
+        Self {
+            host_dispatcher: Arc::clone(&self.host_dispatcher),
+        }
     }
 }
 
