@@ -22,13 +22,11 @@ use wascc_codec::deserialize;
 
 use std::collections::HashMap;
 use std::env;
+use std::marker::PhantomData;
 use std::sync::{Arc, RwLock};
 use std::thread;
 
-use crate::dispatch::{
-    DispatcherError, EventDispatcher, HttpDispatcher, InvocationEventDispatcher,
-    NotHttpRequestError,
-};
+use crate::dispatch::{EventDispatcher, HttpDispatcher, InvocationEventDispatcher};
 use crate::lambda::{Client, InvocationError, InvocationResponse, RuntimeClient};
 
 // These capability providers are designed to be statically linked into its host.
@@ -107,13 +105,16 @@ impl Clone for ShutdownMap {
 
 /// Represents a waSCC AWS Lambda runtime provider.
 //struct AwsLambdaProvider<T> where T: Fn(HostDispatcher) -> Box<dyn InvocationEventDispatcher> {
-struct AwsLambdaProvider {
+struct AwsLambdaProvider<T>
+where
+    T: InvocationEventDispatcher + From<HostDispatcher>,
+{
     host_dispatcher: HostDispatcher,
     shutdown_map: ShutdownMap,
-    //f: fn(HostDispatcher) -> Box<dyn InvocationEventDispatcher>,
+    dispatcher_type: PhantomData<T>,
 }
 
-impl AwsLambdaProvider {
+impl<T: InvocationEventDispatcher + From<HostDispatcher>> AwsLambdaProvider<T> {
     /// Creates a new, empty `AwsLambdaProvider`.
     pub fn new() -> Self {
         Self {
@@ -121,6 +122,7 @@ impl AwsLambdaProvider {
                 wascc_codec::capabilities::NullDispatcher::new(),
             ))),
             shutdown_map: ShutdownMap::new(),
+            dispatcher_type: PhantomData,
         }
     }
 
@@ -181,13 +183,8 @@ impl AwsLambdaProvider {
                 }
             };
 
-            let poller = Poller::new(
-                &module_id,
-                RuntimeClient::new(&endpoint),
-                host_dispatcher,
-                shutdown_map,
-            );
-            poller.run();
+            let poller = Poller::new(&module_id, RuntimeClient::new(&endpoint), shutdown_map);
+            poller.run(T::from(host_dispatcher));
         });
 
         Ok(())
@@ -212,7 +209,7 @@ impl AwsLambdaProvider {
 }
 
 /// Represents a waSCC AWS Lambda event provider.
-pub(crate) struct AwsLambdaEventProvider(AwsLambdaProvider);
+pub(crate) struct AwsLambdaEventProvider(AwsLambdaProvider<EventDispatcher>);
 
 impl AwsLambdaEventProvider {
     /// Creates a new, empty `AwsLambdaEventProvider`.
@@ -252,7 +249,7 @@ impl CapabilityProvider for AwsLambdaEventProvider {
 }
 
 /// Represents a waSCC AWS Lambda HTTP provider.
-pub(crate) struct AwsLambdaHttpProvider(AwsLambdaProvider);
+pub(crate) struct AwsLambdaHttpProvider(AwsLambdaProvider<HttpDispatcher>);
 
 impl AwsLambdaHttpProvider {
     /// Creates a new, empty `AwsLambdaHttpProvider`.
@@ -295,31 +292,21 @@ impl CapabilityProvider for AwsLambdaHttpProvider {
 struct Poller<C> {
     client: C,
     module_id: String,
-    host_dispatcher: HostDispatcher,
     shutdown_map: ShutdownMap,
 }
 
 impl<C: Client> Poller<C> {
     /// Creates a new `Poller`.
-    fn new(
-        module_id: &str,
-        client: C,
-        host_dispatcher: HostDispatcher,
-        shutdown_map: ShutdownMap,
-    ) -> Self {
+    fn new(module_id: &str, client: C, shutdown_map: ShutdownMap) -> Self {
         Self {
             client,
             module_id: module_id.into(),
-            host_dispatcher,
             shutdown_map,
         }
     }
 
     /// Runs the poller until shutdown.
-    fn run(&self) {
-        let http_dispatcher = HttpDispatcher::new(Arc::clone(&self.host_dispatcher));
-        let raw_event_dispatcher = EventDispatcher::new(Arc::clone(&self.host_dispatcher));
-
+    fn run(&self, dispatcher: impl InvocationEventDispatcher) {
         loop {
             if self.shutdown() {
                 break;
@@ -353,45 +340,7 @@ impl<C: Client> Poller<C> {
                 env::set_var("_X_AMZN_TRACE_ID", trace_id);
             }
 
-            // Try first to dispatch as an HTTP request.
-            match http_dispatcher.dispatch_invocation_event(&self.module_id, event.body()) {
-                // The invocation event could be converted to an HTTP request and was dispatched succesfully.
-                Ok(body) => {
-                    self.send_invocation_response(body, request_id);
-                    continue;
-                }
-                // The event couldn't be converted to an HTTP request.
-                // Dispatch as a Lambda raw event.
-                Err(e) if e.is::<NotHttpRequestError>() => info!("{}", e),
-                Err(e) if e.is::<DispatcherError>() => {
-                    match e.downcast_ref::<DispatcherError>().unwrap() {
-                        // The event could be converted to an HTTP request but couldn't be serialized.
-                        // Dispatch as a Lambda raw event.
-                        e @ DispatcherError::RequestSerialization { .. } => warn!("{}", e),
-                        // The event could be converted to an HTTP request but wasn't dispatched to the actor.
-                        // Dispatch as a Lambda raw event.
-                        e @ DispatcherError::NotDispatched { .. } => warn!("{}", e),
-                        // The event could be converted to an HTTP request and was
-                        // dispatched succesfully but there was an error after dispatch,
-                        // Fail the invocation.
-                        _ => {
-                            error!("{}", e);
-                            self.send_invocation_error(e, request_id);
-                            continue;
-                        }
-                    }
-                }
-                // Some other error.
-                // Fail the invocation.
-                Err(e) => {
-                    error!("{}", e);
-                    self.send_invocation_error(e, request_id);
-                    continue;
-                }
-            };
-
-            // Dispatch as a Lambda raw event.
-            match raw_event_dispatcher.dispatch_invocation_event(&self.module_id, event.body()) {
+            match dispatcher.dispatch_invocation_event(&self.module_id, event.body()) {
                 Ok(body) => self.send_invocation_response(body, request_id),
                 Err(e) => {
                     error!("{}", e);
