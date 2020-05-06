@@ -20,7 +20,6 @@ use wascc_codec::capabilities::CapabilityProvider;
 use wascc_codec::core::{CapabilityConfiguration, OP_BIND_ACTOR, OP_REMOVE_ACTOR};
 use wascc_codec::deserialize;
 
-use std::collections::HashMap;
 use std::env;
 use std::marker::PhantomData;
 use std::sync::{Arc, RwLock};
@@ -28,80 +27,9 @@ use std::thread;
 
 use crate::dispatch::{EventDispatcher, HttpDispatcher, InvocationEventDispatcher};
 use crate::lambda::{Client, InvocationError, InvocationResponse, RuntimeClient};
+use crate::{HostDispatcher, ShutdownMap};
 
 // These capability providers are designed to be statically linked into its host.
-
-/// Represents a shared host dispatcher.
-pub(crate) type HostDispatcher = Arc<RwLock<Box<dyn wascc_codec::capabilities::Dispatcher>>>;
-
-/// Represents a shared shutdown map, module_id => shutdown_flag.
-struct ShutdownMap {
-    map: Arc<RwLock<HashMap<String, bool>>>,
-}
-
-impl ShutdownMap {
-    /// Creates a new, empty `ShutdownMap`.
-    fn new() -> Self {
-        Self {
-            map: Arc::new(RwLock::new(HashMap::new())),
-        }
-    }
-
-    /// Returns whether the shutdown flag has been set for the specified module.
-    fn get(&self, module_id: &str) -> anyhow::Result<bool> {
-        Ok(*self
-            .map
-            .read()
-            .map_err(|e| anyhow!("{}", e))?
-            .get(module_id)
-            .ok_or_else(|| anyhow!("Unknown actor {}", module_id))?)
-    }
-
-    /// Puts the shutdown flag value for the specified module.
-    /// Any previous value is overwritten.
-    fn put(&self, module_id: &str, flag: bool) -> anyhow::Result<()> {
-        self.map
-            .write()
-            .map_err(|e| anyhow!("{}", e))?
-            .insert(module_id.into(), flag);
-
-        Ok(())
-    }
-
-    /// Puts the shutdown flag value for the specified module if present.
-    /// The previous value is overwritten.
-    /// Returns whether a value was present.
-    fn put_if_present(&self, module_id: &str, flag: bool) -> anyhow::Result<bool> {
-        let mut lock = self.map.write().map_err(|e| anyhow!("{}", e))?;
-        if !lock.contains_key(module_id) {
-            return Ok(false);
-        }
-        *lock
-            .get_mut(module_id)
-            .ok_or_else(|| anyhow!("Unknown actor {}", module_id))? = flag;
-
-        Ok(true)
-    }
-
-    /// Removes any flag value for the specified module.
-    fn remove(&self, module_id: &str) -> anyhow::Result<()> {
-        self.map
-            .write()
-            .map_err(|e| anyhow!("{}", e))?
-            .remove(module_id);
-
-        Ok(())
-    }
-}
-
-impl Clone for ShutdownMap {
-    /// Returns a copy of the value.
-    fn clone(&self) -> Self {
-        Self {
-            map: Arc::clone(&self.map),
-        }
-    }
-}
 
 /// Represents a waSCC AWS Lambda runtime provider.
 //struct AwsLambdaProvider<T> where T: Fn(HostDispatcher) -> Box<dyn InvocationEventDispatcher> {
@@ -209,7 +137,7 @@ impl<T: InvocationEventDispatcher + From<HostDispatcher>> AwsLambdaProvider<T> {
 }
 
 /// Represents a waSCC AWS Lambda event provider.
-pub(crate) struct AwsLambdaEventProvider(AwsLambdaProvider<EventDispatcher>);
+pub struct AwsLambdaEventProvider(AwsLambdaProvider<EventDispatcher>);
 
 impl AwsLambdaEventProvider {
     /// Creates a new, empty `AwsLambdaEventProvider`.
@@ -249,7 +177,7 @@ impl CapabilityProvider for AwsLambdaEventProvider {
 }
 
 /// Represents a waSCC AWS Lambda HTTP provider.
-pub(crate) struct AwsLambdaHttpProvider(AwsLambdaProvider<HttpDispatcher>);
+pub struct AwsLambdaHttpProvider(AwsLambdaProvider<HttpDispatcher>);
 
 impl AwsLambdaHttpProvider {
     /// Creates a new, empty `AwsLambdaHttpProvider`.
