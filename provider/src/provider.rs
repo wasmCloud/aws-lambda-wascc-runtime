@@ -26,7 +26,8 @@ use std::sync::{Arc, RwLock};
 use std::thread;
 
 use crate::dispatch::{
-    Dispatcher, DispatcherError, EventDispatcher, HttpDispatcher, NotHttpRequestError,
+    DispatcherError, EventDispatcher, HttpDispatcher, InvocationEventDispatcher,
+    NotHttpRequestError,
 };
 use crate::lambda::{Client, InvocationError, InvocationResponse, RuntimeClient};
 
@@ -105,13 +106,15 @@ impl Clone for ShutdownMap {
 }
 
 /// Represents a waSCC AWS Lambda runtime provider.
-pub(crate) struct AwsLambdaEventProvider {
+//struct AwsLambdaProvider<T> where T: Fn(HostDispatcher) -> Box<dyn InvocationEventDispatcher> {
+struct AwsLambdaProvider {
+    //event_dispatcher: T,
     host_dispatcher: HostDispatcher,
     shutdown_map: ShutdownMap,
 }
 
-impl Default for AwsLambdaEventProvider {
-    /// Returns the default value for `AwsLambdaEventProvider`.
+impl Default for AwsLambdaProvider {
+    /// Returns the default value for `AwsLambdaProvider`.
     fn default() -> Self {
         Self {
             host_dispatcher: Arc::new(RwLock::new(Box::new(
@@ -122,15 +125,45 @@ impl Default for AwsLambdaEventProvider {
     }
 }
 
-impl AwsLambdaEventProvider {
-    /// Creates a new, empty `AwsLambdaEventProvider`.
+impl AwsLambdaProvider {
+    /// Creates a new, empty `AwsLambdaProvider`.
     pub fn new() -> Self {
         Self::default()
     }
 
+    /// Called when the host runtime is ready and has configured a dispatcher.
+    fn configure_dispatch(
+        &self,
+        dispatcher: Box<dyn wascc_codec::capabilities::Dispatcher>,
+    ) -> anyhow::Result<()> {
+        debug!("awslambda:provider configure_dispatch");
+
+        let mut lock = self.host_dispatcher.write().unwrap();
+        *lock = dispatcher;
+
+        Ok(())
+    }
+
+    /// Called by the host runtime when an actor is requesting a command be executed.
+    fn handle_call(&self, actor: &str, op: &str, msg: &[u8]) -> anyhow::Result<Vec<u8>> {
+        info!("awslambda:provider handle_call `{}` from `{}`", op, actor);
+
+        match op {
+            OP_BIND_ACTOR if actor == "system" => {
+                self.start_polling(deserialize(msg).map_err(|e| anyhow!("{}", e))?)?
+            }
+            OP_REMOVE_ACTOR if actor == "system" => {
+                self.stop_polling(deserialize(msg).map_err(|e| anyhow!("{}", e))?)?
+            }
+            _ => return Err(anyhow!("Unsupported operation: {}", op)),
+        }
+
+        Ok(vec![])
+    }
+
     /// Starts polling the Lambda event machinery.
     fn start_polling(&self, config: CapabilityConfiguration) -> anyhow::Result<()> {
-        debug!("awslambda:event-provider start_polling");
+        debug!("awslambda:provider start_polling");
 
         let host_dispatcher = Arc::clone(&self.host_dispatcher);
         let endpoint = match config.values.get("AWS_LAMBDA_RUNTIME_API") {
@@ -169,7 +202,7 @@ impl AwsLambdaEventProvider {
 
     /// Stops any running Lambda poller.
     fn stop_polling(&self, config: CapabilityConfiguration) -> anyhow::Result<()> {
-        debug!("awslambda:event-provider stop_polling");
+        debug!("awslambda:provider stop_polling");
 
         let module_id = &config.module;
         if !self.shutdown_map.put_if_present(module_id, false)? {
@@ -185,6 +218,16 @@ impl AwsLambdaEventProvider {
     }
 }
 
+/// Represents a waSCC AWS Lambda event provider.
+pub(crate) struct AwsLambdaEventProvider(AwsLambdaProvider);
+
+impl AwsLambdaEventProvider {
+    /// Creates a new, empty `AwsLambdaEventProvider`.
+    pub fn new() -> Self {
+        Self(AwsLambdaProvider::new())
+    }
+}
+
 impl CapabilityProvider for AwsLambdaEventProvider {
     /// Returns the capability ID in the formated `namespace:id`.
     fn capability_id(&self) -> &'static str {
@@ -196,12 +239,7 @@ impl CapabilityProvider for AwsLambdaEventProvider {
         &self,
         dispatcher: Box<dyn wascc_codec::capabilities::Dispatcher>,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        debug!("awslambda:runtime configure_dispatch");
-
-        let mut lock = self.host_dispatcher.write().unwrap();
-        *lock = dispatcher;
-
-        Ok(())
+        self.0.configure_dispatch(dispatcher).map_err(|e| e.into())
     }
 
     /// Called by the host runtime when an actor is requesting a command be executed.
@@ -211,20 +249,52 @@ impl CapabilityProvider for AwsLambdaEventProvider {
         op: &str,
         msg: &[u8],
     ) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
-        info!("awslambda:runtime handle_call `{}` from `{}`", op, actor);
-
-        match op {
-            OP_BIND_ACTOR if actor == "system" => self.start_polling(deserialize(msg)?)?,
-            OP_REMOVE_ACTOR if actor == "system" => self.stop_polling(deserialize(msg)?)?,
-            _ => return Err(format!("Unsupported operation: {}", op).into()),
-        }
-
-        Ok(vec![])
+        self.0.handle_call(actor, op, msg).map_err(|e| e.into())
     }
 
     /// Returns the human-readable, friendly name of this capability provider.
     fn name(&self) -> &'static str {
         "waSCC AWS Lambda event provider"
+    }
+}
+
+/// Represents a waSCC AWS Lambda HTTP provider.
+pub(crate) struct AwsLambdaHttpProvider(AwsLambdaProvider);
+
+impl AwsLambdaHttpProvider {
+    /// Creates a new, empty `AwsLambdaHttpProvider`.
+    pub fn new() -> Self {
+        Self(AwsLambdaProvider::new())
+    }
+}
+
+impl CapabilityProvider for AwsLambdaHttpProvider {
+    /// Returns the capability ID in the formated `namespace:id`.
+    fn capability_id(&self) -> &'static str {
+        "wascc:http_server"
+    }
+
+    /// Called when the host runtime is ready and has configured a dispatcher.
+    fn configure_dispatch(
+        &self,
+        dispatcher: Box<dyn wascc_codec::capabilities::Dispatcher>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        self.0.configure_dispatch(dispatcher).map_err(|e| e.into())
+    }
+
+    /// Called by the host runtime when an actor is requesting a command be executed.
+    fn handle_call(
+        &self,
+        actor: &str,
+        op: &str,
+        msg: &[u8],
+    ) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+        self.0.handle_call(actor, op, msg).map_err(|e| e.into())
+    }
+
+    /// Returns the human-readable, friendly name of this capability provider.
+    fn name(&self) -> &'static str {
+        "waSCC AWS Lambda HTTP provider"
     }
 }
 

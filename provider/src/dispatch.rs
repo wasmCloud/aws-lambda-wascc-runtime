@@ -57,8 +57,15 @@ pub(crate) enum DispatcherError {
     },
 }
 
+/// Represents dispatching an invocation request to an actor and returning its response.
+pub(crate) trait InvocationEventDispatcher {
+    /// Attempts to dispatch a Lambda invocation event, returning an invocation response.
+    /// The bodies of the invocation event and response are passed and returned.
+    fn dispatch_invocation_event(&self, actor: &str, event: &[u8]) -> anyhow::Result<Vec<u8>>;
+}
+
 /// Represents dispatching a request to an actor and returning its response.
-pub(crate) trait Dispatcher<'de> {
+trait Dispatcher<'de> {
     /// The request type.
     type T: Serialize;
 
@@ -96,10 +103,6 @@ pub(crate) trait Dispatcher<'de> {
 
     /// Returns a shared host dispatcher.
     fn host_dispatcher(&self) -> HostDispatcher;
-
-    /// Attempts to dispatch a Lambda invocation event, returning an invocation response.
-    /// The bodies of the invocation event and response are passed and returned.
-    fn dispatch_invocation_event(&self, actor: &str, event: &[u8]) -> anyhow::Result<Vec<u8>>;
 }
 
 /// The invocation request is not an HTTP request.
@@ -155,20 +158,7 @@ impl HttpDispatcher {
     }
 }
 
-impl Dispatcher<'_> for HttpDispatcher {
-    /// The request type.
-    type T = wascc_codec::http::Request;
-    /// The response type.
-    type U = wascc_codec::http::Response;
-
-    /// The operation this dispatcher dispatches.
-    const OP: &'static str = wascc_codec::http::OP_HANDLE_REQUEST;
-
-    /// Returns a shared host dispatcher.
-    fn host_dispatcher(&self) -> HostDispatcher {
-        Arc::clone(&self.host_dispatcher)
-    }
-
+impl InvocationEventDispatcher for HttpDispatcher {
     /// Attempts to dispatch a Lambda invocation event, returning an invocation response.
     /// The bodies of the invocation event and response are passed and returned.
     fn dispatch_invocation_event(&self, actor: &str, body: &[u8]) -> anyhow::Result<Vec<u8>> {
@@ -208,6 +198,21 @@ impl Dispatcher<'_> for HttpDispatcher {
     }
 }
 
+impl Dispatcher<'_> for HttpDispatcher {
+    /// The request type.
+    type T = wascc_codec::http::Request;
+    /// The response type.
+    type U = wascc_codec::http::Response;
+
+    /// The operation this dispatcher dispatches.
+    const OP: &'static str = wascc_codec::http::OP_HANDLE_REQUEST;
+
+    /// Returns a shared host dispatcher.
+    fn host_dispatcher(&self) -> HostDispatcher {
+        Arc::clone(&self.host_dispatcher)
+    }
+}
+
 /// Dispatches Lambda events.
 pub(crate) struct EventDispatcher {
     host_dispatcher: HostDispatcher,
@@ -217,6 +222,18 @@ impl EventDispatcher {
     /// Returns a new `EventDispatcher`.
     pub fn new(host_dispatcher: HostDispatcher) -> Self {
         Self { host_dispatcher }
+    }
+}
+
+impl InvocationEventDispatcher for EventDispatcher {
+    /// Attempts to dispatch a Lambda invocation event, returning an invocation response.
+    /// The bodies of the invocation event and response are passed and returned.
+    fn dispatch_invocation_event(&self, actor: &str, body: &[u8]) -> anyhow::Result<Vec<u8>> {
+        let raw_event = codec::Event {
+            body: body.to_vec(),
+        };
+
+        Ok(self.dispatch_request(actor, raw_event)?.body)
     }
 }
 
@@ -232,16 +249,6 @@ impl Dispatcher<'_> for EventDispatcher {
     /// Returns a shared host dispatcher.
     fn host_dispatcher(&self) -> HostDispatcher {
         Arc::clone(&self.host_dispatcher)
-    }
-
-    /// Attempts to dispatch a Lambda invocation event, returning an invocation response.
-    /// The bodies of the invocation event and response are passed and returned.
-    fn dispatch_invocation_event(&self, actor: &str, body: &[u8]) -> anyhow::Result<Vec<u8>> {
-        let raw_event = codec::Event {
-            body: body.to_vec(),
-        };
-
-        Ok(self.dispatch_request(actor, raw_event)?.body)
     }
 }
 

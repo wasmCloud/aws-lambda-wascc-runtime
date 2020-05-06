@@ -32,7 +32,8 @@ use std::sync::{Arc, RwLock};
 use std::thread;
 
 use crate::dispatch::{
-    Dispatcher, DispatcherError, EventDispatcher, HttpDispatcher, NotHttpRequestError,
+    DispatcherError, EventDispatcher, HttpDispatcher, InvocationEventDispatcher,
+    NotHttpRequestError,
 };
 
 pub use crate::lambda::{initerr_reporter, InitializationErrorReporter};
