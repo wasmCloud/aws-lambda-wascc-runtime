@@ -26,9 +26,9 @@ use std::sync::{Arc, RwLock};
 use std::thread;
 
 use crate::dispatch::{
-    Dispatcher, DispatcherError, HttpDispatcher, NotHttpRequestError, RawEventDispatcher,
+    Dispatcher, DispatcherError, EventDispatcher, HttpDispatcher, NotHttpRequestError,
 };
-use crate::lambda::{Client, RuntimeClient, InvocationError, InvocationResponse};
+use crate::lambda::{Client, InvocationError, InvocationResponse, RuntimeClient};
 
 // These capability providers are designed to be statically linked into its host.
 
@@ -105,7 +105,7 @@ impl Clone for ShutdownMap {
 }
 
 /// Represents a waSCC AWS Lambda runtime provider.
-pub (crate) struct AwsLambdaEventProvider {
+pub(crate) struct AwsLambdaEventProvider {
     host_dispatcher: HostDispatcher,
     shutdown_map: ShutdownMap,
 }
@@ -205,7 +205,12 @@ impl CapabilityProvider for AwsLambdaEventProvider {
     }
 
     /// Called by the host runtime when an actor is requesting a command be executed.
-    fn handle_call(&self, actor: &str, op: &str, msg: &[u8]) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+    fn handle_call(
+        &self,
+        actor: &str,
+        op: &str,
+        msg: &[u8],
+    ) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
         info!("awslambda:runtime handle_call `{}` from `{}`", op, actor);
 
         match op {
@@ -250,7 +255,7 @@ impl<T: Client> Poller<T> {
     /// Runs the poller until shutdown.
     fn run(&self) {
         let http_dispatcher = HttpDispatcher::new(Arc::clone(&self.host_dispatcher));
-        let raw_event_dispatcher = RawEventDispatcher::new(Arc::clone(&self.host_dispatcher));
+        let raw_event_dispatcher = EventDispatcher::new(Arc::clone(&self.host_dispatcher));
 
         loop {
             if self.shutdown() {

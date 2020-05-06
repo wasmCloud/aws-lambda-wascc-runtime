@@ -32,7 +32,7 @@ use std::sync::{Arc, RwLock};
 use std::thread;
 
 use crate::dispatch::{
-    Dispatcher, DispatcherError, HttpDispatcher, NotHttpRequestError, RawEventDispatcher,
+    Dispatcher, DispatcherError, EventDispatcher, HttpDispatcher, NotHttpRequestError,
 };
 
 pub use crate::lambda::{initerr_reporter, InitializationErrorReporter};
@@ -265,7 +265,7 @@ impl<T: Client> Poller<T> {
     /// Runs the poller until shutdown.
     fn run(&self) {
         let http_dispatcher = HttpDispatcher::new(Arc::clone(&self.host_dispatcher));
-        let raw_event_dispatcher = RawEventDispatcher::new(Arc::clone(&self.host_dispatcher));
+        let raw_event_dispatcher = EventDispatcher::new(Arc::clone(&self.host_dispatcher));
 
         loop {
             if self.shutdown() {

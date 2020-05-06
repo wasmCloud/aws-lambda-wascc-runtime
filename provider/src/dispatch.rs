@@ -208,19 +208,19 @@ impl Dispatcher<'_> for HttpDispatcher {
     }
 }
 
-/// Dispatches Lambda raw events.
-pub(crate) struct RawEventDispatcher {
+/// Dispatches Lambda events.
+pub(crate) struct EventDispatcher {
     host_dispatcher: HostDispatcher,
 }
 
-impl RawEventDispatcher {
-    /// Returns a new `RawEventDispatcher`.
+impl EventDispatcher {
+    /// Returns a new `EventDispatcher`.
     pub fn new(host_dispatcher: HostDispatcher) -> Self {
         Self { host_dispatcher }
     }
 }
 
-impl Dispatcher<'_> for RawEventDispatcher {
+impl Dispatcher<'_> for EventDispatcher {
     /// The request type.
     type T = codec::Event;
     /// The response type.
@@ -259,7 +259,7 @@ mod tests {
         };
         let host_dispatcher: HostDispatcher =
             Arc::new(RwLock::new(Box::new(MockHostDispatcher::new(response))));
-        let dispatcher = RawEventDispatcher::new(host_dispatcher);
+        let dispatcher = EventDispatcher::new(host_dispatcher);
 
         let result = dispatcher.dispatch_invocation_event(MODULE_ID, EVENT_BODY);
         assert!(result.is_ok());
@@ -271,7 +271,7 @@ mod tests {
     fn dispatch_raw_event_not_dispatched_error() {
         let host_dispatcher: HostDispatcher =
             Arc::new(RwLock::new(Box::new(ErrorHostDispatcher::new())));
-        let dispatcher = RawEventDispatcher::new(host_dispatcher);
+        let dispatcher = EventDispatcher::new(host_dispatcher);
 
         let result = dispatcher.dispatch_invocation_event(MODULE_ID, EVENT_BODY);
         assert!(result.is_err());
@@ -290,7 +290,7 @@ mod tests {
         let host_dispatcher: HostDispatcher = Arc::new(RwLock::new(Box::new(
             MockHostDispatcher::new(RESPONSE_BODY),
         )));
-        let dispatcher = RawEventDispatcher::new(host_dispatcher);
+        let dispatcher = EventDispatcher::new(host_dispatcher);
 
         let result = dispatcher.dispatch_invocation_event(MODULE_ID, EVENT_BODY);
         assert!(result.is_err());
