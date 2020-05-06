@@ -19,7 +19,7 @@
 #[macro_use]
 extern crate anyhow;
 
-use log::{debug, info, warn};
+use log::{debug, error, info, warn};
 use provider::{initerr_reporter, AwsLambdaRuntimeProvider};
 use std::collections::HashMap;
 use std::env;
@@ -55,8 +55,14 @@ fn main() -> anyhow::Result<()> {
 
     match load_and_run() {
         Ok(_) => {}
-        Err(e) => reporter.send_initialization_error(e)?,
+        Err(e) => {
+            error!("{}", e);
+            reporter.send_initialization_error(e)?;
+        }
     };
+
+    debug!("Main thread park");
+    std::thread::park();
 
     info!("AWS Lambda waSCC Runtime done");
 
@@ -96,9 +102,6 @@ fn load_and_run() -> anyhow::Result<()> {
     for capability in capabilities {
         autoconfigure_actors(&host, capability);
     }
-
-    info!("Main thread park");
-    std::thread::park();
 
     Ok(())
 }
