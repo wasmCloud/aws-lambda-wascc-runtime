@@ -20,12 +20,13 @@
 extern crate anyhow;
 
 use log::{debug, error, info, warn};
-use provider::{initerr_reporter, AwsLambdaRuntimeProvider};
-use std::collections::HashMap;
-use std::env;
+use provider::{initerr_reporter, AwsLambdaRuntimeProvider, InitializationErrorReporter};
 use wascc_codec::capabilities::CapabilityProvider;
 use wascc_host::{HostManifest, NativeCapability, WasccHost};
 use wascc_logging::LoggingProvider;
+
+use std::collections::HashMap;
+use std::env;
 
 const MANIFEST_FILE: &str = "manifest.yaml";
 
