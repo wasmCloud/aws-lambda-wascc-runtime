@@ -108,27 +108,20 @@ impl Clone for ShutdownMap {
 /// Represents a waSCC AWS Lambda runtime provider.
 //struct AwsLambdaProvider<T> where T: Fn(HostDispatcher) -> Box<dyn InvocationEventDispatcher> {
 struct AwsLambdaProvider {
-    //event_dispatcher: T,
     host_dispatcher: HostDispatcher,
     shutdown_map: ShutdownMap,
+    //f: fn(HostDispatcher) -> Box<dyn InvocationEventDispatcher>,
 }
 
-impl Default for AwsLambdaProvider {
-    /// Returns the default value for `AwsLambdaProvider`.
-    fn default() -> Self {
+impl AwsLambdaProvider {
+    /// Creates a new, empty `AwsLambdaProvider`.
+    pub fn new() -> Self {
         Self {
             host_dispatcher: Arc::new(RwLock::new(Box::new(
                 wascc_codec::capabilities::NullDispatcher::new(),
             ))),
             shutdown_map: ShutdownMap::new(),
         }
-    }
-}
-
-impl AwsLambdaProvider {
-    /// Creates a new, empty `AwsLambdaProvider`.
-    pub fn new() -> Self {
-        Self::default()
     }
 
     /// Called when the host runtime is ready and has configured a dispatcher.
@@ -306,11 +299,11 @@ struct Poller<C> {
     shutdown_map: ShutdownMap,
 }
 
-impl<T: Client> Poller<T> {
+impl<C: Client> Poller<C> {
     /// Creates a new `Poller`.
     fn new(
         module_id: &str,
-        client: T,
+        client: C,
         host_dispatcher: HostDispatcher,
         shutdown_map: ShutdownMap,
     ) -> Self {

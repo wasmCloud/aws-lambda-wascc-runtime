@@ -197,8 +197,8 @@ impl InitializationErrorReporter for RuntimeClient {
 }
 
 /// Returns a new `InitializationErrorReporter` implementation.
-pub fn initerr_reporter(endpoint: &str) -> Box<dyn InitializationErrorReporter> {
-    Box::new(RuntimeClient::new(endpoint))
+pub fn initerr_reporter(endpoint: &str) -> impl InitializationErrorReporter {
+    RuntimeClient::new(endpoint)
 }
 
 /// Represents an invocation event.
