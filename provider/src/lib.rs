@@ -13,7 +13,7 @@
 // limitations under the License.
 
 //
-// waSCC AWS Lambda Runtime Provider
+// waSCC AWS Lambda Runtime Providers
 //
 
 #[macro_use]
@@ -41,6 +41,7 @@ use crate::lambda::{Client, RuntimeClient};
 mod dispatch;
 mod http;
 mod lambda;
+mod provider;
 
 const CAPABILITY_ID: &str = "awslambda:runtime";
 

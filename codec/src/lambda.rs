@@ -13,7 +13,7 @@
 // limitations under the License.
 
 //
-// waSCC AWS Lambda Runtime Codec
+// waSCC AWS Lambda Event Codec
 //
 
 pub const OP_HANDLE_EVENT: &str = "HandleEvent";

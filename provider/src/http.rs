@@ -13,7 +13,7 @@
 // limitations under the License.
 
 //
-// waSCC AWS Lambda Runtime Provider
+// waSCC AWS Lambda Runtime Providers
 //
 
 use aws_lambda_events::event::{alb, apigw};
