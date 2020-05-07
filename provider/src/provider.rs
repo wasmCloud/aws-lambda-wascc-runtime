@@ -184,26 +184,26 @@ impl CapabilityProvider for LambdaRawEventProvider {
     }
 }
 
-/// Represents a waSCC AWS Lambda HTTP provider.
+/// Represents a waSCC AWS Lambda HTTP request provider.
 /// This capability provider dispatches events from
 /// the AWS Lambda machinery as HTTP requests.
-pub struct LambdaHttpProvider(LambdaProvider<HttpDispatcher>);
+pub struct LambdaHttpRequestProvider(LambdaProvider<HttpDispatcher>);
 
-impl LambdaHttpProvider {
-    /// Creates a new, empty `LambdaHttpProvider`.
+impl LambdaHttpRequestProvider {
+    /// Creates a new, empty `LambdaHttpRequestProvider`.
     pub fn new() -> Self {
         Default::default()
     }
 }
 
-impl Default for LambdaHttpProvider {
-    /// Returns the default value for `LambdaHttpProvider`.
+impl Default for LambdaHttpRequestProvider {
+    /// Returns the default value for `LambdaHttpRequestProvider`.
     fn default() -> Self {
         Self(LambdaProvider::new())
     }
 }
 
-impl CapabilityProvider for LambdaHttpProvider {
+impl CapabilityProvider for LambdaHttpRequestProvider {
     /// Returns the capability ID in the formated `namespace:id`.
     fn capability_id(&self) -> &'static str {
         "wascc:http_server"
@@ -229,7 +229,7 @@ impl CapabilityProvider for LambdaHttpProvider {
 
     /// Returns the human-readable, friendly name of this capability provider.
     fn name(&self) -> &'static str {
-        "waSCC AWS Lambda HTTP provider"
+        "waSCC AWS Lambda HTTP request provider"
     }
 }
 
