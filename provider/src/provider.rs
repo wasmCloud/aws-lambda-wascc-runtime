@@ -135,24 +135,26 @@ impl<T: InvocationEventDispatcher + From<HostDispatcher>> LambdaProvider<T> {
     }
 }
 
-/// Represents a waSCC AWS Lambda event provider.
-pub struct LambdaEventProvider(LambdaProvider<EventDispatcher>);
+/// Represents a waSCC AWS Lambda raw event provider.
+/// This capability provider dispatches events from
+/// the AWS Lambda machinery as raw events (without translation).
+pub struct LambdaRawEventProvider(LambdaProvider<EventDispatcher>);
 
-impl LambdaEventProvider {
-    /// Creates a new, empty `LambdaEventProvider`.
+impl LambdaRawEventProvider {
+    /// Creates a new, empty `LambdaRawEventProvider`.
     pub fn new() -> Self {
         Default::default()
     }
 }
 
-impl Default for LambdaEventProvider {
-    /// Returns the default value for `LambdaEventProvider`.
+impl Default for LambdaRawEventProvider {
+    /// Returns the default value for `LambdaRawEventProvider`.
     fn default() -> Self {
         Self(LambdaProvider::new())
     }
 }
 
-impl CapabilityProvider for LambdaEventProvider {
+impl CapabilityProvider for LambdaRawEventProvider {
     /// Returns the capability ID in the formated `namespace:id`.
     fn capability_id(&self) -> &'static str {
         "awslambda:event"
@@ -178,11 +180,13 @@ impl CapabilityProvider for LambdaEventProvider {
 
     /// Returns the human-readable, friendly name of this capability provider.
     fn name(&self) -> &'static str {
-        "waSCC AWS Lambda event provider"
+        "waSCC AWS Lambda raw event provider"
     }
 }
 
 /// Represents a waSCC AWS Lambda HTTP provider.
+/// This capability provider dispatches events from
+/// the AWS Lambda machinery as HTTP requests.
 pub struct LambdaHttpProvider(LambdaProvider<HttpDispatcher>);
 
 impl LambdaHttpProvider {

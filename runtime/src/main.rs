@@ -21,7 +21,7 @@ extern crate anyhow;
 
 use log::{debug, error, info, warn};
 use provider::{
-    initerr_reporter, InitializationErrorReporter, LambdaEventProvider, LambdaHttpProvider,
+    initerr_reporter, InitializationErrorReporter, LambdaHttpProvider, LambdaRawEventProvider,
 };
 use wascc_codec::capabilities::CapabilityProvider;
 use wascc_host::{HostManifest, NativeCapability, WasccHost};
