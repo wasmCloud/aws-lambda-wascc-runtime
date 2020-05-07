@@ -33,12 +33,6 @@ use std::env;
 
 const MANIFEST_FILE: &str = "manifest.yaml";
 
-/// Represents a waSCC capability that is statically linked into this host.
-struct Capability {
-    id: String,
-    config: HashMap<String, String>,
-}
-
 /// Entry point.
 fn main() -> anyhow::Result<()> {
     // No timestamp in the log format as CloudWatch already adds it.
@@ -77,22 +71,33 @@ fn main() -> anyhow::Result<()> {
 fn load_and_run() -> anyhow::Result<()> {
     let host = WasccHost::new();
 
-    let runtime = LambdaHttpRequestProvider::new();
-    let logging = LoggingProvider::new();
+    let http_request_provider = LambdaHttpRequestProvider::new();
+    let raw_event_provider = LambdaRawEventProvider::new();
+    let logging_provider = LoggingProvider::new();
 
-    let capabilities = vec![
-        Capability {
-            id: runtime.capability_id().into(),
-            config: runtime_provider_config(),
-        },
-        Capability {
-            id: logging.capability_id().into(),
-            config: HashMap::new(), // No configuration.
-        },
+    let lambda_provider_config = lambda_provider_config();
+    let logging_provider_config = HashMap::new(); // No configuration.
+
+    // All of these capabilities can be configured for any actor.
+    let any_capabilities: Vec<(String, &HashMap<String, String>)> = vec![(
+        logging_provider.capability_id().into(),
+        &logging_provider_config,
+    )];
+    // Exactly one of these capabilities can be configured for a single actor.
+    let exactly_one_capabilities: Vec<(String, &HashMap<String, String>)> = vec![
+        (
+            http_request_provider.capability_id().into(),
+            &lambda_provider_config,
+        ),
+        (
+            raw_event_provider.capability_id().into(),
+            &lambda_provider_config,
+        ),
     ];
 
-    add_capability(&host, runtime)?;
-    add_capability(&host, logging)?;
+    add_capability(&host, http_request_provider)?;
+    add_capability(&host, raw_event_provider)?;
+    add_capability(&host, logging_provider)?;
 
     // Load from well-known manifest file and expand any environment variables.
     if let Some(cwd) = std::env::current_dir()?.to_str() {
@@ -103,9 +108,7 @@ fn load_and_run() -> anyhow::Result<()> {
     host.apply_manifest(manifest)
         .map_err(|e| anyhow!("Failed to apply manifest: {}", e))?;
 
-    for capability in capabilities {
-        autoconfigure_actors(&host, capability);
-    }
+    autoconfigure_actors(&host, any_capabilities, exactly_one_capabilities);
 
     Ok(())
 }
@@ -121,24 +124,58 @@ fn add_capability(host: &WasccHost, instance: impl CapabilityProvider) -> anyhow
     Ok(())
 }
 
-/// Autoconfigures any actors that have the specified capability.
-fn autoconfigure_actors(host: &WasccHost, capability: Capability) {
+/// Autoconfigures actors.
+/// For every actor loaded into the host
+/// - Attempt to configure with each of the `any` capabilities
+/// - Attempt to configure one actor with one of the `exactly_one` capabilities
+fn autoconfigure_actors(
+    host: &WasccHost,
+    any: Vec<(String, &HashMap<String, String>)>,
+    exactly_one: Vec<(String, &HashMap<String, String>)>,
+) {
     for actor in host.actors() {
-        match host.bind_actor(&actor.0, &capability.id, None, capability.config.clone()) {
-            Ok(_) => info!(
-                "Autoconfigured actor {} for capability {}",
-                actor.0, capability.id
-            ),
-            Err(e) => info!(
-                "Autoconfiguration skipped actor {} for capability {}: {}",
-                actor.0, capability.id, e
-            ),
-        };
+        for capability in &any {
+            configure_actor(host, &actor.0, &capability.0, capability.1);
+        }
+    }
+
+    for actor in host.actors() {
+        for capability in &exactly_one {
+            if configure_actor(host, &actor.0, &capability.0, capability.1) {
+                return;
+            }
+        }
     }
 }
 
-/// Returns the configuration for the Lambda runtime provider.
-fn runtime_provider_config() -> HashMap<String, String> {
+/// Configures an actor with a capability.
+/// Returns whether or not the actor was successfully configured.
+fn configure_actor(
+    host: &WasccHost,
+    actor_id: &str,
+    capability_id: &str,
+    config: &HashMap<String, String>,
+) -> bool {
+    match host.bind_actor(actor_id, capability_id, None, config.clone()) {
+        Ok(_) => {
+            info!(
+                "Autoconfigured actor {} for capability {}",
+                actor_id, capability_id
+            );
+            true
+        }
+        Err(e) => {
+            info!(
+                "Autoconfiguration skipped actor {} for capability {}: {}",
+                actor_id, capability_id, e
+            );
+            false
+        }
+    }
+}
+
+/// Returns the configuration for any Lambda capability provider.
+fn lambda_provider_config() -> HashMap<String, String> {
     let mut config = HashMap::new();
     // https://docs.aws.amazon.com/lambda/latest/dg/configuration-envvars.html#configuration-envvars-runtime
     let keys = vec![
