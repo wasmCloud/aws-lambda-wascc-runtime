@@ -32,8 +32,7 @@ use crate::{HostDispatcher, ShutdownMap};
 // These capability providers are designed to be statically linked into its host.
 
 /// Represents a waSCC AWS Lambda runtime provider.
-//struct AwsLambdaProvider<T> where T: Fn(HostDispatcher) -> Box<dyn InvocationEventDispatcher> {
-struct AwsLambdaProvider<T>
+struct LambdaProvider<T>
 where
     T: InvocationEventDispatcher + From<HostDispatcher>,
 {
@@ -42,8 +41,8 @@ where
     dispatcher_type: PhantomData<T>,
 }
 
-impl<T: InvocationEventDispatcher + From<HostDispatcher>> AwsLambdaProvider<T> {
-    /// Creates a new, empty `AwsLambdaProvider`.
+impl<T: InvocationEventDispatcher + From<HostDispatcher>> LambdaProvider<T> {
+    /// Creates a new, empty `LambdaProvider`.
     pub fn new() -> Self {
         Self {
             host_dispatcher: Arc::new(RwLock::new(Box::new(
@@ -137,16 +136,16 @@ impl<T: InvocationEventDispatcher + From<HostDispatcher>> AwsLambdaProvider<T> {
 }
 
 /// Represents a waSCC AWS Lambda event provider.
-pub struct AwsLambdaEventProvider(AwsLambdaProvider<EventDispatcher>);
+pub struct LambdaEventProvider(LambdaProvider<EventDispatcher>);
 
-impl AwsLambdaEventProvider {
-    /// Creates a new, empty `AwsLambdaEventProvider`.
+impl LambdaEventProvider {
+    /// Creates a new, empty `LambdaEventProvider`.
     pub fn new() -> Self {
-        Self(AwsLambdaProvider::new())
+        Self(LambdaProvider::new())
     }
 }
 
-impl CapabilityProvider for AwsLambdaEventProvider {
+impl CapabilityProvider for LambdaEventProvider {
     /// Returns the capability ID in the formated `namespace:id`.
     fn capability_id(&self) -> &'static str {
         "awslambda:event"
@@ -177,16 +176,16 @@ impl CapabilityProvider for AwsLambdaEventProvider {
 }
 
 /// Represents a waSCC AWS Lambda HTTP provider.
-pub struct AwsLambdaHttpProvider(AwsLambdaProvider<HttpDispatcher>);
+pub struct LambdaHttpProvider(LambdaProvider<HttpDispatcher>);
 
-impl AwsLambdaHttpProvider {
-    /// Creates a new, empty `AwsLambdaHttpProvider`.
+impl LambdaHttpProvider {
+    /// Creates a new, empty `LambdaHttpProvider`.
     pub fn new() -> Self {
-        Self(AwsLambdaProvider::new())
+        Self(LambdaProvider::new())
     }
 }
 
-impl CapabilityProvider for AwsLambdaHttpProvider {
+impl CapabilityProvider for LambdaHttpProvider {
     /// Returns the capability ID in the formated `namespace:id`.
     fn capability_id(&self) -> &'static str {
         "wascc:http_server"

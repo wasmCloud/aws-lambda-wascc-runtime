@@ -25,7 +25,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 
 pub use crate::lambda::{initerr_reporter, InitializationErrorReporter};
-pub use crate::provider::{AwsLambdaEventProvider, AwsLambdaHttpProvider};
+pub use crate::provider::{LambdaEventProvider, LambdaHttpProvider};
 
 mod dispatch;
 mod http;

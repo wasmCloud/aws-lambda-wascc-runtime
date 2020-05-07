@@ -20,7 +20,9 @@
 extern crate anyhow;
 
 use log::{debug, error, info, warn};
-use provider::{initerr_reporter, AwsLambdaEventProvider, AwsLambdaHttpProvider, InitializationErrorReporter};
+use provider::{
+    initerr_reporter, InitializationErrorReporter, LambdaEventProvider, LambdaHttpProvider,
+};
 use wascc_codec::capabilities::CapabilityProvider;
 use wascc_host::{HostManifest, NativeCapability, WasccHost};
 use wascc_logging::LoggingProvider;
@@ -74,7 +76,7 @@ fn main() -> anyhow::Result<()> {
 fn load_and_run() -> anyhow::Result<()> {
     let host = WasccHost::new();
 
-    let runtime = AwsLambdaHttpProvider::new();
+    let runtime = LambdaHttpProvider::new();
     let logging = LoggingProvider::new();
 
     let capabilities = vec![
