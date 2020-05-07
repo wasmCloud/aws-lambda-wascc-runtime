@@ -26,7 +26,7 @@ use std::marker::PhantomData;
 use std::sync::{Arc, RwLock};
 use std::thread;
 
-use crate::dispatch::{EventDispatcher, HttpRequestDispatcher, InvocationEventDispatcher};
+use crate::dispatch::{HttpRequestDispatcher, InvocationEventDispatcher, RawEventDispatcher};
 use crate::lambda::{Client, InvocationError, InvocationResponse, RuntimeClient};
 use crate::HostDispatcher;
 
@@ -210,7 +210,7 @@ impl<T: InvocationEventDispatcher + From<HostDispatcher>> LambdaProvider<T> {
 /// Represents a waSCC AWS Lambda raw event provider.
 /// This capability provider dispatches events from
 /// the AWS Lambda machinery as raw events (without translation).
-pub struct LambdaRawEventProvider(LambdaProvider<EventDispatcher>);
+pub struct LambdaRawEventProvider(LambdaProvider<RawEventDispatcher>);
 
 impl LambdaRawEventProvider {
     /// Creates a new, empty `LambdaRawEventProvider`.
@@ -495,14 +495,14 @@ mod tests {
         };
         let host_dispatcher: HostDispatcher =
             Arc::new(RwLock::new(Box::new(MockHostDispatcher::new(response))));
-        EventDispatcher::new(host_dispatcher)
+        RawEventDispatcher::new(host_dispatcher)
     }
 
     /// Returns a test event dispatcher that errors.
     fn error_dispatcher() -> impl InvocationEventDispatcher {
         let host_dispatcher: HostDispatcher =
             Arc::new(RwLock::new(Box::new(ErrorHostDispatcher::new())));
-        EventDispatcher::new(host_dispatcher)
+        RawEventDispatcher::new(host_dispatcher)
     }
 
     /// Returns a mock poller.
