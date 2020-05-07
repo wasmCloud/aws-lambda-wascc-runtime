@@ -123,12 +123,12 @@ impl InvocationEventDispatcher for NullDispatcher {
 pub(crate) struct NotHttpRequestError;
 
 /// Dispatches HTTP requests.
-pub(crate) struct HttpDispatcher {
+pub(crate) struct HttpRequestDispatcher {
     host_dispatcher: HostDispatcher,
 }
 
-impl HttpDispatcher {
-    /// Returns a new `HttpDispatcher`.
+impl HttpRequestDispatcher {
+    /// Returns a new `HttpRequestDispatcher`.
     pub fn new(host_dispatcher: HostDispatcher) -> Self {
         Self { host_dispatcher }
     }
@@ -139,7 +139,7 @@ impl HttpDispatcher {
         actor: &str,
         request: AlbTargetGroupRequestWrapper,
     ) -> anyhow::Result<AlbTargetGroupResponseWrapper> {
-        info!("HttpDispatcher dispatch ALB target group request");
+        info!("HttpRequestDispatcher dispatch ALB target group request");
         Ok(self
             .dispatch_request(actor, request.try_into()?)?
             .try_into()?)
@@ -151,7 +151,7 @@ impl HttpDispatcher {
         actor: &str,
         request: ApiGatewayProxyRequestWrapper,
     ) -> anyhow::Result<ApiGatewayProxyResponseWrapper> {
-        info!("HttpDispatcher dispatch API Gateway proxy request");
+        info!("HttpRequestDispatcher dispatch API Gateway proxy request");
         Ok(self
             .dispatch_request(actor, request.try_into()?)?
             .try_into()?)
@@ -163,14 +163,14 @@ impl HttpDispatcher {
         actor: &str,
         request: ApiGatewayV2ProxyRequestWrapper,
     ) -> anyhow::Result<ApiGatewayV2ProxyResponseWrapper> {
-        info!("HttpDispatcher dispatch API Gateway v2 proxy request");
+        info!("HttpRequestDispatcher dispatch API Gateway v2 proxy request");
         Ok(self
             .dispatch_request(actor, request.try_into()?)?
             .try_into()?)
     }
 }
 
-impl Clone for HttpDispatcher {
+impl Clone for HttpRequestDispatcher {
     /// Returns a copy of the value.
     fn clone(&self) -> Self {
         Self {
@@ -179,14 +179,14 @@ impl Clone for HttpDispatcher {
     }
 }
 
-impl From<HostDispatcher> for HttpDispatcher {
-    /// Converts a host dispatcher to an `HttpDispatcher`.
+impl From<HostDispatcher> for HttpRequestDispatcher {
+    /// Converts a host dispatcher to an `HttpRequestDispatcher`.
     fn from(host_dispatcher: HostDispatcher) -> Self {
         Self::new(host_dispatcher)
     }
 }
 
-impl InvocationEventDispatcher for HttpDispatcher {
+impl InvocationEventDispatcher for HttpRequestDispatcher {
     /// Attempts to dispatch a Lambda invocation event, returning an invocation response.
     /// The bodies of the invocation event and response are passed and returned.
     fn dispatch_invocation_event(&self, actor: &str, body: &[u8]) -> anyhow::Result<Vec<u8>> {
@@ -226,7 +226,7 @@ impl InvocationEventDispatcher for HttpDispatcher {
     }
 }
 
-impl Dispatcher<'_> for HttpDispatcher {
+impl Dispatcher<'_> for HttpRequestDispatcher {
     /// The request type.
     type T = wascc_codec::http::Request;
     /// The response type.
@@ -360,7 +360,7 @@ mod tests {
         let response = valid_http_response();
         let host_dispatcher: HostDispatcher =
             Arc::new(RwLock::new(Box::new(MockHostDispatcher::new(response))));
-        let dispatcher = HttpDispatcher::new(host_dispatcher);
+        let dispatcher = HttpRequestDispatcher::new(host_dispatcher);
 
         let result =
             dispatcher.dispatch_alb_request(MODULE_ID, valid_alb_target_group_request().into());
@@ -372,7 +372,7 @@ mod tests {
     fn dispatch_alb_target_group_request_not_dispatched_error() {
         let host_dispatcher: HostDispatcher =
             Arc::new(RwLock::new(Box::new(ErrorHostDispatcher::new())));
-        let dispatcher = HttpDispatcher::new(host_dispatcher);
+        let dispatcher = HttpRequestDispatcher::new(host_dispatcher);
 
         let result =
             dispatcher.dispatch_alb_request(MODULE_ID, valid_alb_target_group_request().into());
@@ -392,7 +392,7 @@ mod tests {
         let host_dispatcher: HostDispatcher = Arc::new(RwLock::new(Box::new(
             MockHostDispatcher::new(RESPONSE_BODY),
         )));
-        let dispatcher = HttpDispatcher::new(host_dispatcher);
+        let dispatcher = HttpRequestDispatcher::new(host_dispatcher);
 
         let result =
             dispatcher.dispatch_alb_request(MODULE_ID, valid_alb_target_group_request().into());
@@ -412,7 +412,7 @@ mod tests {
         let response = valid_http_response();
         let host_dispatcher: HostDispatcher =
             Arc::new(RwLock::new(Box::new(MockHostDispatcher::new(response))));
-        let dispatcher = HttpDispatcher::new(host_dispatcher);
+        let dispatcher = HttpRequestDispatcher::new(host_dispatcher);
 
         let result =
             dispatcher.dispatch_apigw_request(MODULE_ID, valid_api_gateway_proxy_request().into());
@@ -424,7 +424,7 @@ mod tests {
     fn dispatch_api_gateway_proxy_request_not_dispatched_error() {
         let host_dispatcher: HostDispatcher =
             Arc::new(RwLock::new(Box::new(ErrorHostDispatcher::new())));
-        let dispatcher = HttpDispatcher::new(host_dispatcher);
+        let dispatcher = HttpRequestDispatcher::new(host_dispatcher);
 
         let result =
             dispatcher.dispatch_apigw_request(MODULE_ID, valid_api_gateway_proxy_request().into());
@@ -444,7 +444,7 @@ mod tests {
         let host_dispatcher: HostDispatcher = Arc::new(RwLock::new(Box::new(
             MockHostDispatcher::new(RESPONSE_BODY),
         )));
-        let dispatcher = HttpDispatcher::new(host_dispatcher);
+        let dispatcher = HttpRequestDispatcher::new(host_dispatcher);
 
         let result =
             dispatcher.dispatch_apigw_request(MODULE_ID, valid_api_gateway_proxy_request().into());
@@ -464,7 +464,7 @@ mod tests {
         let response = valid_http_response();
         let host_dispatcher: HostDispatcher =
             Arc::new(RwLock::new(Box::new(MockHostDispatcher::new(response))));
-        let dispatcher = HttpDispatcher::new(host_dispatcher);
+        let dispatcher = HttpRequestDispatcher::new(host_dispatcher);
 
         let result = dispatcher
             .dispatch_apigwv2_request(MODULE_ID, valid_api_gatewayv2_proxy_request().into());
@@ -476,7 +476,7 @@ mod tests {
     fn dispatch_api_gatewayv2_proxy_request_not_dispatched_error() {
         let host_dispatcher: HostDispatcher =
             Arc::new(RwLock::new(Box::new(ErrorHostDispatcher::new())));
-        let dispatcher = HttpDispatcher::new(host_dispatcher);
+        let dispatcher = HttpRequestDispatcher::new(host_dispatcher);
 
         let result = dispatcher
             .dispatch_apigwv2_request(MODULE_ID, valid_api_gatewayv2_proxy_request().into());
@@ -496,7 +496,7 @@ mod tests {
         let host_dispatcher: HostDispatcher = Arc::new(RwLock::new(Box::new(
             MockHostDispatcher::new(RESPONSE_BODY),
         )));
-        let dispatcher = HttpDispatcher::new(host_dispatcher);
+        let dispatcher = HttpRequestDispatcher::new(host_dispatcher);
 
         let result = dispatcher
             .dispatch_apigwv2_request(MODULE_ID, valid_api_gatewayv2_proxy_request().into());
@@ -516,7 +516,7 @@ mod tests {
         let response = valid_http_response();
         let host_dispatcher: HostDispatcher =
             Arc::new(RwLock::new(Box::new(MockHostDispatcher::new(response))));
-        let dispatcher = HttpDispatcher::new(host_dispatcher);
+        let dispatcher = HttpRequestDispatcher::new(host_dispatcher);
 
         let result = serde_json::to_vec(&valid_alb_target_group_request());
         assert!(result.is_ok());
@@ -532,7 +532,7 @@ mod tests {
         let response = valid_http_response();
         let host_dispatcher: HostDispatcher =
             Arc::new(RwLock::new(Box::new(MockHostDispatcher::new(response))));
-        let dispatcher = HttpDispatcher::new(host_dispatcher);
+        let dispatcher = HttpRequestDispatcher::new(host_dispatcher);
 
         let result = serde_json::to_vec(&valid_api_gateway_proxy_request());
         assert!(result.is_ok());
@@ -548,7 +548,7 @@ mod tests {
         let response = valid_http_response();
         let host_dispatcher: HostDispatcher =
             Arc::new(RwLock::new(Box::new(MockHostDispatcher::new(response))));
-        let dispatcher = HttpDispatcher::new(host_dispatcher);
+        let dispatcher = HttpRequestDispatcher::new(host_dispatcher);
 
         let result = serde_json::to_vec(&valid_api_gatewayv2_proxy_request());
         assert!(result.is_ok());
@@ -564,7 +564,7 @@ mod tests {
         let response = valid_http_response();
         let host_dispatcher: HostDispatcher =
             Arc::new(RwLock::new(Box::new(MockHostDispatcher::new(response))));
-        let dispatcher = HttpDispatcher::new(host_dispatcher);
+        let dispatcher = HttpRequestDispatcher::new(host_dispatcher);
 
         let result = serde_json::to_vec(EVENT_BODY);
         assert!(result.is_ok());

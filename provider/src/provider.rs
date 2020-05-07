@@ -26,7 +26,7 @@ use std::marker::PhantomData;
 use std::sync::{Arc, RwLock};
 use std::thread;
 
-use crate::dispatch::{EventDispatcher, HttpDispatcher, InvocationEventDispatcher};
+use crate::dispatch::{EventDispatcher, HttpRequestDispatcher, InvocationEventDispatcher};
 use crate::lambda::{Client, InvocationError, InvocationResponse, RuntimeClient};
 use crate::HostDispatcher;
 
@@ -259,7 +259,7 @@ impl CapabilityProvider for LambdaRawEventProvider {
 /// Represents a waSCC AWS Lambda HTTP request provider.
 /// This capability provider dispatches events from
 /// the AWS Lambda machinery as HTTP requests.
-pub struct LambdaHttpRequestProvider(LambdaProvider<HttpDispatcher>);
+pub struct LambdaHttpRequestProvider(LambdaProvider<HttpRequestDispatcher>);
 
 impl LambdaHttpRequestProvider {
     /// Creates a new, empty `LambdaHttpRequestProvider`.
