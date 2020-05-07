@@ -141,6 +141,13 @@ pub struct LambdaEventProvider(LambdaProvider<EventDispatcher>);
 impl LambdaEventProvider {
     /// Creates a new, empty `LambdaEventProvider`.
     pub fn new() -> Self {
+        Default::default()
+    }
+}
+
+impl Default for LambdaEventProvider {
+    /// Returns the default value for `LambdaEventProvider`.
+    fn default() -> Self {
         Self(LambdaProvider::new())
     }
 }
@@ -181,6 +188,13 @@ pub struct LambdaHttpProvider(LambdaProvider<HttpDispatcher>);
 impl LambdaHttpProvider {
     /// Creates a new, empty `LambdaHttpProvider`.
     pub fn new() -> Self {
+        Default::default()
+    }
+}
+
+impl Default for LambdaHttpProvider {
+    /// Returns the default value for `LambdaHttpProvider`.
+    fn default() -> Self {
         Self(LambdaProvider::new())
     }
 }
