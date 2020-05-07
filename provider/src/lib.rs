@@ -21,9 +21,6 @@ extern crate anyhow;
 #[macro_use]
 extern crate log;
 
-use std::collections::HashMap;
-use std::sync::{Arc, RwLock};
-
 pub use crate::lambda::{initerr_reporter, InitializationErrorReporter};
 pub use crate::provider::{LambdaHttpRequestProvider, LambdaRawEventProvider};
 
@@ -33,76 +30,8 @@ mod lambda;
 mod provider;
 
 /// Represents a shared host dispatcher.
-pub(crate) type HostDispatcher = Arc<RwLock<Box<dyn wascc_codec::capabilities::Dispatcher>>>;
-
-/// Represents a shared shutdown map, module_id => shutdown_flag.
-struct ShutdownMap {
-    map: Arc<RwLock<HashMap<String, bool>>>,
-}
-
-impl ShutdownMap {
-    /// Creates a new, empty `ShutdownMap`.
-    fn new() -> Self {
-        Self {
-            map: Arc::new(RwLock::new(HashMap::new())),
-        }
-    }
-
-    /// Returns whether the shutdown flag has been set for the specified module.
-    fn get(&self, module_id: &str) -> anyhow::Result<bool> {
-        Ok(*self
-            .map
-            .read()
-            .map_err(|e| anyhow!("{}", e))?
-            .get(module_id)
-            .ok_or_else(|| anyhow!("Unknown actor {}", module_id))?)
-    }
-
-    /// Puts the shutdown flag value for the specified module.
-    /// Any previous value is overwritten.
-    fn put(&self, module_id: &str, flag: bool) -> anyhow::Result<()> {
-        self.map
-            .write()
-            .map_err(|e| anyhow!("{}", e))?
-            .insert(module_id.into(), flag);
-
-        Ok(())
-    }
-
-    /// Puts the shutdown flag value for the specified module if present.
-    /// The previous value is overwritten.
-    /// Returns whether a value was present.
-    fn put_if_present(&self, module_id: &str, flag: bool) -> anyhow::Result<bool> {
-        let mut lock = self.map.write().map_err(|e| anyhow!("{}", e))?;
-        if !lock.contains_key(module_id) {
-            return Ok(false);
-        }
-        *lock
-            .get_mut(module_id)
-            .ok_or_else(|| anyhow!("Unknown actor {}", module_id))? = flag;
-
-        Ok(true)
-    }
-
-    /// Removes any flag value for the specified module.
-    fn remove(&self, module_id: &str) -> anyhow::Result<()> {
-        self.map
-            .write()
-            .map_err(|e| anyhow!("{}", e))?
-            .remove(module_id);
-
-        Ok(())
-    }
-}
-
-impl Clone for ShutdownMap {
-    /// Returns a copy of the value.
-    fn clone(&self) -> Self {
-        Self {
-            map: Arc::clone(&self.map),
-        }
-    }
-}
+pub(crate) type HostDispatcher =
+    std::sync::Arc<std::sync::RwLock<Box<dyn wascc_codec::capabilities::Dispatcher>>>;
 
 /// This module contains code to be used by many unit tests.
 #[cfg(test)]
