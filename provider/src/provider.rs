@@ -443,6 +443,7 @@ mod tests {
     use crate::tests_common::*;
 
     /// Represents the event kind to return.
+    #[derive(Clone)]
     enum EventKind {
         /// No event.
         None,
@@ -453,15 +454,27 @@ mod tests {
     }
 
     /// Creates `MockClient` instances.
-    struct MockClientFactory;
+    struct MockClientFactory {
+        event_kind: EventKind,
+        shutdown_map: ShutdownMap,
+    }
 
-    // TODO
-    // impl ClientFactory<MockClient> for MockClientFactory {
-    //     /// Creates a new `MockClient`.
-    //     fn new_client(&self, endpoint: &str) -> MockClient {
-    //         RuntimeClient::new(endpoint)
-    //     }
-    // }
+    impl MockClientFactory {
+        /// Creates a new `MockClientFactory`.
+        fn new(event_kind: EventKind, shutdown_map: ShutdownMap) -> Self {
+            Self {
+                event_kind,
+                shutdown_map,
+            }
+        }
+    }
+
+    impl ClientFactory<MockClient> for MockClientFactory {
+        /// Creates a new `MockClient`.
+        fn new_client(&self, _endpoint: &str) -> MockClient {
+            MockClient::new(self.event_kind.clone(), self.shutdown_map.clone())
+        }
+    }
 
     /// Represents a mock Lambda runtime client that returns a single event.
     struct MockClient {
@@ -678,7 +691,7 @@ mod tests {
 
     #[test]
     fn raw_event_provider_unsupported_operation() {
-        let provider = LambdaRawEventProvider::new();
+        let provider = default_raw_event_provider();
         let result = provider.configure_dispatch(boxed_mock_dispatcher(RESPONSE_BODY));
         assert!(result.is_ok());
 
@@ -699,7 +712,7 @@ mod tests {
 
     #[test]
     fn raw_event_provider_no_config() {
-        let provider = LambdaRawEventProvider::new();
+        let provider = default_raw_event_provider();
         let result = provider.configure_dispatch(boxed_mock_dispatcher(RESPONSE_BODY));
         assert!(result.is_ok());
 
@@ -713,7 +726,7 @@ mod tests {
 
     #[test]
     fn raw_event_provider_no_endpoint() {
-        let provider = LambdaRawEventProvider::new();
+        let provider = default_raw_event_provider();
         let result = provider.configure_dispatch(boxed_mock_dispatcher(RESPONSE_BODY));
         assert!(result.is_ok());
 
