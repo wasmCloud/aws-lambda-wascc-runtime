@@ -105,12 +105,6 @@ trait Dispatcher<'de> {
     fn host_dispatcher(&self) -> HostDispatcher;
 }
 
-/// Creates `Dispatcher` instances.
-trait DispatcherFactory<D> {
-    /// Creates a new `Dispatcher`.
-    fn new_dispatcher(&self, host_dispatcher: HostDispatcher) -> D;
-}
-
 /// The invocation request is not an HTTP request.
 #[derive(thiserror::Error, Debug)]
 #[error("Not an HTTP request")]
@@ -235,23 +229,6 @@ impl Dispatcher<'_> for HttpRequestDispatcher {
     }
 }
 
-/// Creates `HttpRequestDispatcher` instances.
-struct HttpRequestDispatcherFactory;
-
-impl HttpRequestDispatcherFactory {
-    /// Returns new `HttpRequestDispatcherFactory` instances.
-    fn new() -> Self {
-        Self
-    }
-}
-
-impl DispatcherFactory<HttpRequestDispatcher> for HttpRequestDispatcherFactory {
-    /// Creates a new `HttpRequestDispatcher`.
-    fn new_dispatcher(&self, host_dispatcher: HostDispatcher) -> HttpRequestDispatcher {
-        HttpRequestDispatcher::new(host_dispatcher)
-    }
-}
-
 /// Dispatches raw Lambda events.
 pub(crate) struct RawEventDispatcher {
     host_dispatcher: HostDispatcher,
@@ -304,23 +281,6 @@ impl Dispatcher<'_> for RawEventDispatcher {
     /// Returns a shared host dispatcher.
     fn host_dispatcher(&self) -> HostDispatcher {
         Arc::clone(&self.host_dispatcher)
-    }
-}
-
-/// Creates `RawEventDispatcher` instances.
-struct RawEventDispatcherFactory;
-
-impl RawEventDispatcherFactory {
-    /// Returns new `RawEventDispatcherFactory` instances.
-    fn new() -> Self {
-        Self
-    }
-}
-
-impl DispatcherFactory<RawEventDispatcher> for RawEventDispatcherFactory {
-    /// Creates a new `RawEventDispatcher`.
-    fn new_dispatcher(&self, host_dispatcher: HostDispatcher) -> RawEventDispatcher {
-        RawEventDispatcher::new(host_dispatcher)
     }
 }
 

@@ -336,6 +336,46 @@ impl ClientFactory<RuntimeClient> for RuntimeClientFactory {
     }
 }
 
+/// Creates `Dispatcher` instances.
+trait DispatcherFactory<D> {
+    /// Creates a new `Dispatcher`.
+    fn new_dispatcher(&self, host_dispatcher: HostDispatcher) -> D;
+}
+
+/// Creates `HttpRequestDispatcher` instances.
+struct HttpRequestDispatcherFactory;
+
+impl HttpRequestDispatcherFactory {
+    /// Returns new `HttpRequestDispatcherFactory` instances.
+    fn new() -> Self {
+        Self
+    }
+}
+
+impl DispatcherFactory<HttpRequestDispatcher> for HttpRequestDispatcherFactory {
+    /// Creates a new `HttpRequestDispatcher`.
+    fn new_dispatcher(&self, host_dispatcher: HostDispatcher) -> HttpRequestDispatcher {
+        HttpRequestDispatcher::new(host_dispatcher)
+    }
+}
+
+/// Creates `RawEventDispatcher` instances.
+struct RawEventDispatcherFactory;
+
+impl RawEventDispatcherFactory {
+    /// Returns new `RawEventDispatcherFactory` instances.
+    fn new() -> Self {
+        Self
+    }
+}
+
+impl DispatcherFactory<RawEventDispatcher> for RawEventDispatcherFactory {
+    /// Creates a new `RawEventDispatcher`.
+    fn new_dispatcher(&self, host_dispatcher: HostDispatcher) -> RawEventDispatcher {
+        RawEventDispatcher::new(host_dispatcher)
+    }
+}
+
 /// Polls the Lambda event machinery using the specified client.
 struct Poller<C> {
     client: C,
