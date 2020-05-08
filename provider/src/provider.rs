@@ -493,15 +493,13 @@ mod tests {
         let response = codec::Response {
             body: RESPONSE_BODY.to_vec(),
         };
-        let host_dispatcher: HostDispatcher =
-            Arc::new(RwLock::new(Box::new(MockHostDispatcher::new(response))));
+        let host_dispatcher: HostDispatcher = mock_host_dispatcher(response);
         RawEventDispatcher::new(host_dispatcher)
     }
 
     /// Returns a test event dispatcher that errors.
     fn error_dispatcher() -> impl InvocationEventDispatcher {
-        let host_dispatcher: HostDispatcher =
-            Arc::new(RwLock::new(Box::new(ErrorHostDispatcher::new())));
+        let host_dispatcher: HostDispatcher = error_host_dispatcher();
         RawEventDispatcher::new(host_dispatcher)
     }
 

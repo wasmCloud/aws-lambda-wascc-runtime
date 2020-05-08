@@ -43,6 +43,9 @@ mod tests_common {
     use std::any::Any;
     use std::collections::HashMap;
     use std::error::Error;
+    use std::sync::{Arc, RwLock};
+
+    use super::HostDispatcher;
 
     pub(crate) const ERROR_MESSAGE: &str = "ERROR";
     pub(crate) const EVENT_BODY: &'static [u8] = b"EVENT_BODY";
@@ -51,21 +54,21 @@ mod tests_common {
     pub(crate) const RESPONSE_BODY: &'static [u8] = b"RESPONSE_BODY";
     pub(crate) const TRACE_ID: &str = "TRACE_ID";
 
-    /// Represents a mock `HostDispatcher`
-    pub(crate) struct MockHostDispatcher<T> {
+    /// Represents a mock `wascc_codec::capabilities::Dispatcher`.
+    pub(crate) struct MockWasccDispatcher<T> {
         /// The dispatcher response.
         response: T,
     }
 
-    impl<T> MockHostDispatcher<T> {
-        /// Returns a new `MockHostDispatcher`.
+    impl<T> MockWasccDispatcher<T> {
+        /// Returns a new `MockWasccDispatcher`.
         pub fn new(response: T) -> Self {
             Self { response }
         }
     }
 
     impl<T: Any + Serialize + Send + Sync> wascc_codec::capabilities::Dispatcher
-        for MockHostDispatcher<T>
+        for MockWasccDispatcher<T>
     {
         fn dispatch(
             &self,
@@ -77,17 +80,22 @@ mod tests_common {
         }
     }
 
-    /// Represents a `HostDispatcher` that returns an error.
-    pub(crate) struct ErrorHostDispatcher {}
+    /// Returns a mock `HostDispatcher`.
+    pub fn mock_host_dispatcher<T: Any + Serialize + Send + Sync>(response: T) -> HostDispatcher {
+        Arc::new(RwLock::new(Box::new(MockWasccDispatcher::new(response))))
+    }
 
-    impl ErrorHostDispatcher {
-        /// Returns a new `ErrorHostDispatcher`.
+    /// Represents a `wascc_codec::capabilities::Dispatcher` that returns an error.
+    pub(crate) struct ErrorWasccDispatcher {}
+
+    impl ErrorWasccDispatcher {
+        /// Returns a new `ErrorWasccDispatcher`.
         pub fn new() -> Self {
             Self {}
         }
     }
 
-    impl wascc_codec::capabilities::Dispatcher for ErrorHostDispatcher {
+    impl wascc_codec::capabilities::Dispatcher for ErrorWasccDispatcher {
         fn dispatch(
             &self,
             _actor: &str,
@@ -96,6 +104,11 @@ mod tests_common {
         ) -> Result<Vec<u8>, Box<dyn Error>> {
             Err(anyhow!(ERROR_MESSAGE).into())
         }
+    }
+
+    /// Returns a `HostDispatcher` that returns an error.
+    pub fn error_host_dispatcher() -> HostDispatcher {
+        Arc::new(RwLock::new(Box::new(ErrorWasccDispatcher::new())))
     }
 
     /// Returns a query string map for a request.
