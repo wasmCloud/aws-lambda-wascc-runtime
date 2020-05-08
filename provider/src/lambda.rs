@@ -13,7 +13,7 @@
 // limitations under the License.
 
 //
-// waSCC AWS Lambda Runtime Provider
+// waSCC AWS Lambda Runtime Providers
 //
 
 use reqwest::header::USER_AGENT;

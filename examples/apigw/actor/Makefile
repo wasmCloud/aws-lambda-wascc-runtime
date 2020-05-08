@@ -14,7 +14,7 @@ bench:
 
 build:
 	@$(CARGO) build --target wasm32-unknown-unknown
-	wascap sign $(DEBUG)/uppercase.wasm $(DEBUG)/uppercase_signed.wasm --issuer $(KEYDIR)/account.nk --subject $(KEYDIR)/module.nk --cap awslambda:runtime --cap wascc:logging --name uppercase
+	wascap sign $(DEBUG)/uppercase.wasm $(DEBUG)/uppercase_signed.wasm --issuer $(KEYDIR)/account.nk --subject $(KEYDIR)/module.nk --cap wascc:http_server --cap wascc:logging --name uppercase
 
 check:
 	@$(CARGO) check
@@ -33,7 +33,7 @@ update:
 
 release:
 	@$(CARGO) build --release --target wasm32-unknown-unknown
-	wascap sign $(RELEASE)/uppercase.wasm $(RELEASE)/uppercase.wasm --issuer $(KEYDIR)/account.nk --subject $(KEYDIR)/module.nk --cap awslambda:runtime --cap wascc:logging --name uppercase
+	wascap sign $(RELEASE)/uppercase.wasm $(RELEASE)/uppercase.wasm --issuer $(KEYDIR)/account.nk --subject $(KEYDIR)/module.nk --cap wascc:http_server --cap wascc:logging --name uppercase
 
 keys: keys-account
 keys: keys-module

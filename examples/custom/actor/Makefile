@@ -14,7 +14,7 @@ bench:
 
 build:
 	@$(CARGO) build --target wasm32-unknown-unknown
-	wascap sign $(DEBUG)/wascc_actor_hello_lambda.wasm $(DEBUG)/wascc_actor_hello_lambda_signed.wasm --issuer $(KEYDIR)/account.nk --subject $(KEYDIR)/module.nk --cap awslambda:runtime --cap wascc:logging --name wascc_actor_hello_lambda
+	wascap sign $(DEBUG)/wascc_actor_hello_lambda.wasm $(DEBUG)/wascc_actor_hello_lambda_signed.wasm --issuer $(KEYDIR)/account.nk --subject $(KEYDIR)/module.nk --cap awslambda:event --cap wascc:logging --name wascc_actor_hello_lambda
 
 check:
 	@$(CARGO) check
@@ -33,7 +33,7 @@ update:
 
 release:
 	@$(CARGO) build --release --target wasm32-unknown-unknown
-	wascap sign $(RELEASE)/wascc_actor_hello_lambda.wasm $(RELEASE)/wascc_actor_hello_lambda_signed.wasm --issuer $(KEYDIR)/account.nk --subject $(KEYDIR)/module.nk --cap awslambda:runtime --cap wascc:logging --name wascc_actor_hello_lambda
+	wascap sign $(RELEASE)/wascc_actor_hello_lambda.wasm $(RELEASE)/wascc_actor_hello_lambda_signed.wasm --issuer $(KEYDIR)/account.nk --subject $(KEYDIR)/module.nk --cap awslambda:event --cap wascc:logging --name wascc_actor_hello_lambda
 
 keys: keys-account
 keys: keys-module
