@@ -517,7 +517,7 @@ mod tests {
 
     /// Tests that receiving an empty event sends no response or error.
     #[test]
-    fn event_kind_none() {
+    fn poller_event_kind_none() {
         let poller = mock_poller(EventKind::None);
         let result = poller.shutdown_map.put(MODULE_ID, false);
         assert!(result.is_ok());
@@ -531,7 +531,7 @@ mod tests {
 
     /// Tests that receiving an event without a request ID sends no response or error.
     #[test]
-    fn event_kind_event_no_request_id() {
+    fn poller_event_kind_event_no_request_id() {
         let poller = mock_poller(EventKind::Event(InvocationEvent::no_request_id()));
         let result = poller.shutdown_map.put(MODULE_ID, false);
         assert!(result.is_ok());
@@ -545,7 +545,7 @@ mod tests {
 
     /// Tests that receiving an event with a request ID sends a response.
     #[test]
-    fn event_kind_event_with_request_id() {
+    fn poller_event_kind_event_with_request_id() {
         let poller = mock_poller(EventKind::Event(InvocationEvent::with_request_id()));
         let result = poller.shutdown_map.put(MODULE_ID, false);
         assert!(result.is_ok());
@@ -579,7 +579,7 @@ mod tests {
 
     /// Tests that receiving an event with a request ID and dispatching with an error sends an error.
     #[test]
-    fn event_kind_event_with_request_id_error_dispatcher() {
+    fn poller_event_kind_event_with_request_id_error_dispatcher() {
         let poller = mock_poller(EventKind::Event(InvocationEvent::with_request_id()));
         let result = poller.shutdown_map.put(MODULE_ID, false);
         assert!(result.is_ok());
@@ -603,7 +603,7 @@ mod tests {
 
     /// Tests that receiving an error sends no response or error.
     #[test]
-    fn event_kind_error() {
+    fn poller_event_kind_error() {
         let poller = mock_poller(EventKind::Error);
         let result = poller.shutdown_map.put(MODULE_ID, false);
         assert!(result.is_ok());
