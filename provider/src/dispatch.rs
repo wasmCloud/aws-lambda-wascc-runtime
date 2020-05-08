@@ -105,16 +105,10 @@ trait Dispatcher<'de> {
     fn host_dispatcher(&self) -> HostDispatcher;
 }
 
-/// Do-nothing dispatcher.
-#[derive(Default)]
-pub struct NullDispatcher;
-
-impl InvocationEventDispatcher for NullDispatcher {
-    /// Attempts to dispatch a Lambda invocation event, returning an invocation response.
-    /// The bodies of the invocation event and response are passed and returned.
-    fn dispatch_invocation_event(&self, _actor: &str, _body: &[u8]) -> anyhow::Result<Vec<u8>> {
-        unimplemented!()
-    }
+/// Creates `Dispatcher` instances.
+trait DispatcherFactory<D> {
+    /// Creates a new `Dispatcher`.
+    fn new_dispatcher(&self, host_dispatcher: HostDispatcher) -> D;
 }
 
 /// The invocation request is not an HTTP request.
@@ -241,6 +235,23 @@ impl Dispatcher<'_> for HttpRequestDispatcher {
     }
 }
 
+/// Creates `HttpRequestDispatcher` instances.
+struct HttpRequestDispatcherFactory;
+
+impl HttpRequestDispatcherFactory {
+    /// Returns new `HttpRequestDispatcherFactory` instances.
+    fn new() -> Self {
+        Self
+    }
+}
+
+impl DispatcherFactory<HttpRequestDispatcher> for HttpRequestDispatcherFactory {
+    /// Creates a new `HttpRequestDispatcher`.
+    fn new_dispatcher(&self, host_dispatcher: HostDispatcher) -> HttpRequestDispatcher {
+        HttpRequestDispatcher::new(host_dispatcher)
+    }
+}
+
 /// Dispatches raw Lambda events.
 pub(crate) struct RawEventDispatcher {
     host_dispatcher: HostDispatcher,
@@ -250,6 +261,22 @@ impl RawEventDispatcher {
     /// Returns a new `RawEventDispatcher`.
     pub fn new(host_dispatcher: HostDispatcher) -> Self {
         Self { host_dispatcher }
+    }
+}
+
+impl Clone for RawEventDispatcher {
+    /// Returns a copy of the value.
+    fn clone(&self) -> Self {
+        Self {
+            host_dispatcher: Arc::clone(&self.host_dispatcher),
+        }
+    }
+}
+
+impl From<HostDispatcher> for RawEventDispatcher {
+    /// Converts a host dispatcher to an `RawEventDispatcher`.
+    fn from(host_dispatcher: HostDispatcher) -> Self {
+        Self::new(host_dispatcher)
     }
 }
 
@@ -280,19 +307,20 @@ impl Dispatcher<'_> for RawEventDispatcher {
     }
 }
 
-impl Clone for RawEventDispatcher {
-    /// Returns a copy of the value.
-    fn clone(&self) -> Self {
-        Self {
-            host_dispatcher: Arc::clone(&self.host_dispatcher),
-        }
+/// Creates `RawEventDispatcher` instances.
+struct RawEventDispatcherFactory;
+
+impl RawEventDispatcherFactory {
+    /// Returns new `RawEventDispatcherFactory` instances.
+    fn new() -> Self {
+        Self
     }
 }
 
-impl From<HostDispatcher> for RawEventDispatcher {
-    /// Converts a host dispatcher to an `RawEventDispatcher`.
-    fn from(host_dispatcher: HostDispatcher) -> Self {
-        Self::new(host_dispatcher)
+impl DispatcherFactory<RawEventDispatcher> for RawEventDispatcherFactory {
+    /// Creates a new `RawEventDispatcher`.
+    fn new_dispatcher(&self, host_dispatcher: HostDispatcher) -> RawEventDispatcher {
+        RawEventDispatcher::new(host_dispatcher)
     }
 }
 
