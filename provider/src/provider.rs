@@ -437,7 +437,6 @@ mod tests {
         InitializationError, InvocationError, InvocationEvent, InvocationEventBuilder,
         InvocationResponse,
     };
-    use std::cell::RefCell;
     use wascc_codec::serialize;
 
     use crate::tests_common::*;
@@ -479,9 +478,9 @@ mod tests {
     /// Represents a mock Lambda runtime client that returns a single event.
     struct MockClient {
         event_kind: EventKind,
-        initialization_error: RefCell<Option<InitializationError>>,
-        invocation_error: RefCell<Option<InvocationError>>,
-        invocation_response: RefCell<Option<InvocationResponse>>,
+        initialization_error: RwLock<Option<InitializationError>>,
+        invocation_error: RwLock<Option<InvocationError>>,
+        invocation_response: RwLock<Option<InvocationResponse>>,
         shutdown_map: ShutdownMap,
     }
 
@@ -490,9 +489,9 @@ mod tests {
         fn new(event_kind: EventKind, shutdown_map: ShutdownMap) -> Self {
             Self {
                 event_kind,
-                initialization_error: RefCell::new(None),
-                invocation_error: RefCell::new(None),
-                invocation_response: RefCell::new(None),
+                initialization_error: RwLock::new(None),
+                invocation_error: RwLock::new(None),
+                invocation_response: RwLock::new(None),
                 shutdown_map,
             }
         }
@@ -513,19 +512,25 @@ mod tests {
 
         /// Sends an invocation error to the AWS Lambda runtime.
         fn send_invocation_error(&self, error: InvocationError) -> anyhow::Result<()> {
-            *self.invocation_error.borrow_mut() = Some(error);
+            let mut lock = self.invocation_error.write().unwrap();
+            *lock = Some(error);
+
             Ok(())
         }
 
         /// Sends an invocation error to the AWS Lambda runtime.
         fn send_invocation_response(&self, response: InvocationResponse) -> anyhow::Result<()> {
-            *self.invocation_response.borrow_mut() = Some(response);
+            let mut lock = self.invocation_response.write().unwrap();
+            *lock = Some(response);
+
             Ok(())
         }
 
         /// Sends an initialization error to the AWS Lambda runtime.
         fn send_initialization_error(&self, error: InitializationError) -> anyhow::Result<()> {
-            *self.initialization_error.borrow_mut() = Some(error);
+            let mut lock = self.initialization_error.write().unwrap();
+            *lock = Some(error);
+
             Ok(())
         }
     }
@@ -562,11 +567,21 @@ mod tests {
     /// Returns a mock poller.
     fn mock_poller(event_kind: EventKind) -> Poller<MockClient> {
         let shutdown_map = ShutdownMap::new();
+        let result = shutdown_map.put(MODULE_ID, false);
+        assert!(result.is_ok());
+
         Poller::new(
             MODULE_ID,
             MockClient::new(event_kind, shutdown_map.clone()),
             shutdown_map,
         )
+    }
+
+    /// Returns a `MockClientFactory`.
+    fn mock_client_factory(event_kind: EventKind) -> impl ClientFactory<MockClient> {
+        let shutdown_map = ShutdownMap::new();
+        shutdown_map.put(MODULE_ID, false).unwrap();
+        MockClientFactory::new(event_kind, shutdown_map)
     }
 
     /// Returns a serialized test capability configuration.
@@ -593,47 +608,39 @@ mod tests {
     #[test]
     fn poller_event_kind_none() {
         let poller = mock_poller(EventKind::None);
-        let result = poller.shutdown_map.put(MODULE_ID, false);
-        assert!(result.is_ok());
-
         poller.run(dispatcher());
 
-        assert!(poller.client.initialization_error.borrow().is_none());
-        assert!(poller.client.invocation_response.borrow().is_none());
-        assert!(poller.client.invocation_error.borrow().is_none());
+        assert!(poller.client.initialization_error.read().unwrap().is_none());
+        assert!(poller.client.invocation_response.read().unwrap().is_none());
+        assert!(poller.client.invocation_error.read().unwrap().is_none());
     }
 
     /// Tests that receiving an event without a request ID sends no response or error.
     #[test]
     fn poller_event_kind_event_no_request_id() {
         let poller = mock_poller(EventKind::Event(InvocationEvent::no_request_id()));
-        let result = poller.shutdown_map.put(MODULE_ID, false);
-        assert!(result.is_ok());
-
         poller.run(dispatcher());
 
-        assert!(poller.client.initialization_error.borrow().is_none());
-        assert!(poller.client.invocation_response.borrow().is_none());
-        assert!(poller.client.invocation_error.borrow().is_none());
+        assert!(poller.client.initialization_error.read().unwrap().is_none());
+        assert!(poller.client.invocation_response.read().unwrap().is_none());
+        assert!(poller.client.invocation_error.read().unwrap().is_none());
     }
 
     /// Tests that receiving an event with a request ID sends a response.
     #[test]
     fn poller_event_kind_event_with_request_id() {
         let poller = mock_poller(EventKind::Event(InvocationEvent::with_request_id()));
-        let result = poller.shutdown_map.put(MODULE_ID, false);
-        assert!(result.is_ok());
-
         poller.run(dispatcher());
 
-        assert!(poller.client.initialization_error.borrow().is_none());
-        assert!(poller.client.invocation_response.borrow().is_some());
+        assert!(poller.client.initialization_error.read().unwrap().is_none());
+        assert!(poller.client.invocation_response.read().unwrap().is_some());
         assert_eq!(
             REQUEST_ID,
             poller
                 .client
                 .invocation_response
-                .borrow()
+                .read()
+                .unwrap()
                 .as_ref()
                 .unwrap()
                 .request_id()
@@ -643,32 +650,31 @@ mod tests {
             poller
                 .client
                 .invocation_response
-                .borrow()
+                .read()
+                .unwrap()
                 .as_ref()
                 .unwrap()
                 .body()
         );
-        assert!(poller.client.invocation_error.borrow().is_none());
+        assert!(poller.client.invocation_error.read().unwrap().is_none());
     }
 
     /// Tests that receiving an event with a request ID and dispatching with an error sends an error.
     #[test]
     fn poller_event_kind_event_with_request_id_error_dispatcher() {
         let poller = mock_poller(EventKind::Event(InvocationEvent::with_request_id()));
-        let result = poller.shutdown_map.put(MODULE_ID, false);
-        assert!(result.is_ok());
-
         poller.run(error_dispatcher());
 
-        assert!(poller.client.initialization_error.borrow().is_none());
-        assert!(poller.client.invocation_response.borrow().is_none());
-        assert!(poller.client.invocation_error.borrow().is_some());
+        assert!(poller.client.initialization_error.read().unwrap().is_none());
+        assert!(poller.client.invocation_response.read().unwrap().is_none());
+        assert!(poller.client.invocation_error.read().unwrap().is_some());
         assert_eq!(
             REQUEST_ID,
             poller
                 .client
                 .invocation_error
-                .borrow()
+                .read()
+                .unwrap()
                 .as_ref()
                 .unwrap()
                 .request_id()
@@ -679,14 +685,11 @@ mod tests {
     #[test]
     fn poller_event_kind_error() {
         let poller = mock_poller(EventKind::Error);
-        let result = poller.shutdown_map.put(MODULE_ID, false);
-        assert!(result.is_ok());
-
         poller.run(dispatcher());
 
-        assert!(poller.client.initialization_error.borrow().is_none());
-        assert!(poller.client.invocation_response.borrow().is_none());
-        assert!(poller.client.invocation_error.borrow().is_none());
+        assert!(poller.client.initialization_error.read().unwrap().is_none());
+        assert!(poller.client.invocation_response.read().unwrap().is_none());
+        assert!(poller.client.invocation_error.read().unwrap().is_none());
     }
 
     #[test]
@@ -737,5 +740,16 @@ mod tests {
             .unwrap_err()
             .to_string()
             .contains("Missing configuration value"));
+    }
+
+    #[test]
+    fn raw_event_provider_xyz() {
+        let client_factory = mock_client_factory(EventKind::None);
+        let provider = LambdaRawEventProvider::new(client_factory);
+        let result = provider.configure_dispatch(boxed_mock_dispatcher(RESPONSE_BODY));
+        assert!(result.is_ok());
+
+        let result = provider.handle_call("system", OP_BIND_ACTOR, &capability_configuration());
+        assert!(result.is_ok());
     }
 }
