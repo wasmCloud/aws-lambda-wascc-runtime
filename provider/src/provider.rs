@@ -512,6 +512,7 @@ mod tests {
 
         /// Sends an invocation error to the AWS Lambda runtime.
         fn send_invocation_error(&self, error: InvocationError) -> anyhow::Result<()> {
+            // Record the parameters.
             let mut lock = self.invocation_error.write().unwrap();
             *lock = Some(error);
 
@@ -520,6 +521,7 @@ mod tests {
 
         /// Sends an invocation error to the AWS Lambda runtime.
         fn send_invocation_response(&self, response: InvocationResponse) -> anyhow::Result<()> {
+            // Record the parameters.
             let mut lock = self.invocation_response.write().unwrap();
             *lock = Some(response);
 
@@ -528,6 +530,7 @@ mod tests {
 
         /// Sends an initialization error to the AWS Lambda runtime.
         fn send_initialization_error(&self, error: InitializationError) -> anyhow::Result<()> {
+            // Record the parameters.
             let mut lock = self.initialization_error.write().unwrap();
             *lock = Some(error);
 
@@ -743,10 +746,12 @@ mod tests {
     }
 
     #[test]
-    fn raw_event_provider_xyz() {
-        let client_factory = mock_client_factory(EventKind::None);
+    fn raw_event_provider_ok() {
+        let client_factory =
+            mock_client_factory(EventKind::Event(InvocationEvent::with_request_id()));
         let provider = LambdaRawEventProvider::new(client_factory);
-        let result = provider.configure_dispatch(boxed_mock_dispatcher(RESPONSE_BODY));
+        let mock_dispatcher = boxed_mock_dispatcher(RESPONSE_BODY);
+        let result = provider.configure_dispatch(mock_dispatcher);
         assert!(result.is_ok());
 
         let result = provider.handle_call("system", OP_BIND_ACTOR, &capability_configuration());

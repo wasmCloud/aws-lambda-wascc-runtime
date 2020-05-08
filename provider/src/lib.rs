@@ -58,37 +58,51 @@ mod tests_common {
     pub(crate) struct MockWasccDispatcher<T> {
         /// The dispatcher response.
         response: T,
+        /// The last dispatch's parameters.
+        pub actor: RwLock<Option<String>>,
+        pub op: RwLock<Option<String>>,
+        pub msg: RwLock<Option<Vec<u8>>>,
     }
 
     impl<T> MockWasccDispatcher<T> {
         /// Returns a new `MockWasccDispatcher`.
         pub fn new(response: T) -> Self {
-            Self { response }
+            Self {
+                response,
+                actor: RwLock::new(None),
+                op: RwLock::new(None),
+                msg: RwLock::new(None),
+            }
         }
     }
 
     impl<T: Any + Serialize + Send + Sync> wascc_codec::capabilities::Dispatcher
         for MockWasccDispatcher<T>
     {
-        fn dispatch(
-            &self,
-            _actor: &str,
-            _op: &str,
-            _msg: &[u8],
-        ) -> Result<Vec<u8>, Box<dyn Error>> {
+        fn dispatch(&self, actor: &str, op: &str, msg: &[u8]) -> Result<Vec<u8>, Box<dyn Error>> {
+            // Record the parameters.
+            let mut lock = self.actor.write().unwrap();
+            *lock = Some(actor.into());
+            let mut lock = self.op.write().unwrap();
+            *lock = Some(op.into());
+            let mut lock = self.msg.write().unwrap();
+            *lock = Some(msg.into());
+
             Ok(serialize(&self.response)?)
         }
     }
 
     /// Returns a boxed mock `wascc_codec::capabilities::Dispatcher`.
-    pub fn boxed_mock_dispatcher<T: Any + Serialize + Send + Sync>(
+    pub(crate) fn boxed_mock_dispatcher<T: Any + Serialize + Send + Sync>(
         response: T,
-    ) -> Box<dyn wascc_codec::capabilities::Dispatcher> {
+    ) -> Box<MockWasccDispatcher<T>> {
         Box::new(MockWasccDispatcher::new(response))
     }
 
     /// Returns a mock `HostDispatcher`.
-    pub fn mock_host_dispatcher<T: Any + Serialize + Send + Sync>(response: T) -> HostDispatcher {
+    pub(crate) fn mock_host_dispatcher<T: Any + Serialize + Send + Sync>(
+        response: T,
+    ) -> HostDispatcher {
         Arc::new(RwLock::new(boxed_mock_dispatcher(response)))
     }
 
@@ -114,12 +128,12 @@ mod tests_common {
     }
 
     /// Returns a boxed `wascc_codec::capabilities::Dispatcher` that returns an error.
-    pub fn boxed_error_dispatcher() -> Box<dyn wascc_codec::capabilities::Dispatcher> {
+    pub(crate) fn boxed_error_dispatcher() -> Box<dyn wascc_codec::capabilities::Dispatcher> {
         Box::new(ErrorWasccDispatcher::new())
     }
 
     /// Returns a `HostDispatcher` that returns an error.
-    pub fn error_host_dispatcher() -> HostDispatcher {
+    pub(crate) fn error_host_dispatcher() -> HostDispatcher {
         Arc::new(RwLock::new(boxed_error_dispatcher()))
     }
 
