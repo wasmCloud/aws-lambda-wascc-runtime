@@ -21,8 +21,8 @@ extern crate anyhow;
 
 use log::{debug, error, info, warn};
 use provider::{
-    initerr_reporter, InitializationErrorReporter, LambdaHttpRequestProvider,
-    LambdaRawEventProvider,
+    default_http_request_provider, default_raw_event_provider, initerr_reporter,
+    InitializationErrorReporter,
 };
 use wascc_codec::capabilities::CapabilityProvider;
 use wascc_host::{HostManifest, NativeCapability, WasccHost};
@@ -71,8 +71,8 @@ fn main() -> anyhow::Result<()> {
 fn load_and_run() -> anyhow::Result<()> {
     let host = WasccHost::new();
 
-    let http_request_provider = LambdaHttpRequestProvider::new();
-    let raw_event_provider = LambdaRawEventProvider::new();
+    let http_request_provider = default_http_request_provider();
+    let raw_event_provider = default_raw_event_provider();
     let logging_provider = LoggingProvider::new();
 
     let lambda_provider_config = lambda_provider_config();

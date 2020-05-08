@@ -20,6 +20,7 @@ use wascc_codec::capabilities::CapabilityProvider;
 use wascc_codec::core::{CapabilityConfiguration, OP_BIND_ACTOR, OP_REMOVE_ACTOR};
 use wascc_codec::deserialize;
 
+use std::any::Any;
 use std::collections::HashMap;
 use std::env;
 use std::marker::PhantomData;
@@ -104,23 +105,32 @@ impl Clone for ShutdownMap {
 }
 
 /// Represents a waSCC AWS Lambda runtime provider.
-struct LambdaProvider<T>
-where
-    T: InvocationEventDispatcher + From<HostDispatcher>,
-{
+struct LambdaProvider<T, CF: ClientFactory<C>, PF: PollerFactory<C>, C: Client> {
     host_dispatcher: HostDispatcher,
+    client_factory: CF,
+    poller_factory: PF,
     shutdown_map: ShutdownMap,
+    client_type: PhantomData<C>,
     dispatcher_type: PhantomData<T>,
 }
 
-impl<T: InvocationEventDispatcher + From<HostDispatcher>> LambdaProvider<T> {
+impl<
+        T: InvocationEventDispatcher + From<HostDispatcher>,
+        CF: ClientFactory<C>,
+        PF: PollerFactory<C>,
+        C: Send + Client + 'static,
+    > LambdaProvider<T, CF, PF, C>
+{
     /// Creates a new, empty `LambdaProvider`.
-    pub fn new() -> Self {
+    pub fn new(client_factory: CF, poller_factory: PF) -> Self {
         Self {
             host_dispatcher: Arc::new(RwLock::new(Box::new(
                 wascc_codec::capabilities::NullDispatcher::new(),
             ))),
             shutdown_map: ShutdownMap::new(),
+            client_factory,
+            poller_factory,
+            client_type: PhantomData,
             dispatcher_type: PhantomData,
         }
     }
@@ -168,21 +178,20 @@ impl<T: InvocationEventDispatcher + From<HostDispatcher>> LambdaProvider<T> {
                 ))
             }
         };
+
         let module_id = config.module;
         let shutdown_map = self.shutdown_map.clone();
+        // Initialize this module's shutdown flag.
+        shutdown_map.put(&module_id, false)?;
+
+        let client = self.client_factory.new_client(&endpoint);
+        let poller = self
+            .poller_factory
+            .new_poller(&module_id, client, shutdown_map);
+
         thread::spawn(move || {
             info!("Starting poller for actor {}", module_id);
 
-            // Initialize this module's shutdown flag.
-            match shutdown_map.put(&module_id, false) {
-                Ok(_) => {}
-                Err(e) => {
-                    error!("{}", e);
-                    return;
-                }
-            };
-
-            let poller = Poller::new(&module_id, RuntimeClient::new(&endpoint), shutdown_map);
             poller.run(T::from(host_dispatcher));
         });
 
@@ -210,23 +219,30 @@ impl<T: InvocationEventDispatcher + From<HostDispatcher>> LambdaProvider<T> {
 /// Represents a waSCC AWS Lambda raw event provider.
 /// This capability provider dispatches events from
 /// the AWS Lambda machinery as raw events (without translation).
-pub struct LambdaRawEventProvider(LambdaProvider<RawEventDispatcher>);
+struct LambdaRawEventProvider<CF: ClientFactory<C>, PF: PollerFactory<C>, C: Client>(
+    LambdaProvider<RawEventDispatcher, CF, PF, C>,
+);
 
-impl LambdaRawEventProvider {
+impl<CF: ClientFactory<C>, PF: PollerFactory<C>, C: Send + Client + 'static>
+    LambdaRawEventProvider<CF, PF, C>
+{
     /// Creates a new, empty `LambdaRawEventProvider`.
-    pub fn new() -> Self {
-        Default::default()
+    pub fn new(client_factory: CF, poller_factory: PF) -> Self {
+        Self(LambdaProvider::new(client_factory, poller_factory))
     }
 }
 
-impl Default for LambdaRawEventProvider {
-    /// Returns the default value for `LambdaRawEventProvider`.
-    fn default() -> Self {
-        Self(LambdaProvider::new())
-    }
+/// Returns an instance of the default raw event capability provider.
+pub fn default_raw_event_provider() -> impl CapabilityProvider {
+    LambdaRawEventProvider::new(RuntimeClientFactory::new(), ClientPollerFactory::new())
 }
 
-impl CapabilityProvider for LambdaRawEventProvider {
+impl<
+        CF: Any + Send + Sync + ClientFactory<C>,
+        PF: Any + Send + Sync + PollerFactory<C>,
+        C: Any + Send + Sync + Client,
+    > CapabilityProvider for LambdaRawEventProvider<CF, PF, C>
+{
     /// Returns the capability ID in the formated `namespace:id`.
     fn capability_id(&self) -> &'static str {
         "awslambda:event"
@@ -259,23 +275,30 @@ impl CapabilityProvider for LambdaRawEventProvider {
 /// Represents a waSCC AWS Lambda HTTP request provider.
 /// This capability provider dispatches events from
 /// the AWS Lambda machinery as HTTP requests.
-pub struct LambdaHttpRequestProvider(LambdaProvider<HttpRequestDispatcher>);
+struct LambdaHttpRequestProvider<CF: ClientFactory<C>, PF: PollerFactory<C>, C: Client>(
+    LambdaProvider<HttpRequestDispatcher, CF, PF, C>,
+);
 
-impl LambdaHttpRequestProvider {
+impl<CF: ClientFactory<C>, PF: PollerFactory<C>, C: Send + Client + 'static>
+    LambdaHttpRequestProvider<CF, PF, C>
+{
     /// Creates a new, empty `LambdaHttpRequestProvider`.
-    pub fn new() -> Self {
-        Default::default()
+    pub fn new(client_factory: CF, poller_factory: PF) -> Self {
+        Self(LambdaProvider::new(client_factory, poller_factory))
     }
 }
 
-impl Default for LambdaHttpRequestProvider {
-    /// Returns the default value for `LambdaHttpRequestProvider`.
-    fn default() -> Self {
-        Self(LambdaProvider::new())
-    }
+/// Returns an instance of the default HTTP request capability provider.
+pub fn default_http_request_provider() -> impl CapabilityProvider {
+    LambdaHttpRequestProvider::new(RuntimeClientFactory::new(), ClientPollerFactory::new())
 }
 
-impl CapabilityProvider for LambdaHttpRequestProvider {
+impl<
+        CF: Any + Send + Sync + ClientFactory<C>,
+        PF: Any + Send + Sync + PollerFactory<C>,
+        C: Any + Send + Sync + Client,
+    > CapabilityProvider for LambdaHttpRequestProvider<CF, PF, C>
+{
     /// Returns the capability ID in the formated `namespace:id`.
     fn capability_id(&self) -> &'static str {
         "wascc:http_server"
@@ -295,13 +318,64 @@ impl CapabilityProvider for LambdaHttpRequestProvider {
         actor: &str,
         op: &str,
         msg: &[u8],
-    ) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+    ) -> Result<Vec<u8>, Box<dyn std::error::Error>>
+    where
+        C: Client + Send + 'static,
+        CF: ClientFactory<C>,
+        PF: PollerFactory<C>,
+    {
         self.0.handle_call(actor, op, msg).map_err(|e| e.into())
     }
 
     /// Returns the human-readable, friendly name of this capability provider.
     fn name(&self) -> &'static str {
         "waSCC AWS Lambda HTTP request provider"
+    }
+}
+
+/// Creates `Client` instances.
+trait ClientFactory<C> {
+    /// Creates a new `Client`.
+    fn new_client(&self, endpoint: &str) -> C;
+}
+
+/// Creates `RuntimeClient` instances.
+struct RuntimeClientFactory;
+
+impl RuntimeClientFactory {
+    /// Returns new `RuntimeClientFactory` instances.
+    fn new() -> Self {
+        Self
+    }
+}
+
+impl ClientFactory<RuntimeClient> for RuntimeClientFactory {
+    /// Creates a new `RuntimeClient`.
+    fn new_client(&self, endpoint: &str) -> RuntimeClient {
+        RuntimeClient::new(endpoint)
+    }
+}
+
+/// Creates `Poller` instances.
+trait PollerFactory<C> {
+    /// Creates a new `Poller`.
+    fn new_poller(&self, module_id: &str, client: C, shutdown_map: ShutdownMap) -> Poller<C>;
+}
+
+/// Creates `Poller` instances using `Client` instances.
+struct ClientPollerFactory;
+
+impl ClientPollerFactory {
+    /// Returns new `ClientPollerFactory` instances.
+    fn new() -> Self {
+        Self
+    }
+}
+
+impl<C: Client> PollerFactory<C> for ClientPollerFactory {
+    /// Creates a new `Poller`.
+    fn new_poller(&self, module_id: &str, client: C, shutdown_map: ShutdownMap) -> Poller<C> {
+        Poller::new(module_id, client, shutdown_map)
     }
 }
 
@@ -420,6 +494,17 @@ mod tests {
         /// An error.
         Error,
     }
+
+    /// Creates `MockClient` instances.
+    struct MockClientFactory;
+
+    // TODO
+    // impl ClientFactory<MockClient> for MockClientFactory {
+    //     /// Creates a new `MockClient`.
+    //     fn new_client(&self, endpoint: &str) -> MockClient {
+    //         RuntimeClient::new(endpoint)
+    //     }
+    // }
 
     /// Represents a mock Lambda runtime client that returns a single event.
     struct MockClient {

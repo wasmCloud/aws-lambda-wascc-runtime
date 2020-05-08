@@ -22,7 +22,7 @@ extern crate anyhow;
 extern crate log;
 
 pub use crate::lambda::{initerr_reporter, InitializationErrorReporter};
-pub use crate::provider::{LambdaHttpRequestProvider, LambdaRawEventProvider};
+pub use crate::provider::{default_http_request_provider, default_raw_event_provider};
 
 mod dispatch;
 mod http;
