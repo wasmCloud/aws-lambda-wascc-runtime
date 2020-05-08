@@ -307,7 +307,7 @@ mod tests {
         let response = codec::Response {
             body: RESPONSE_BODY.to_vec(),
         };
-        let host_dispatcher: HostDispatcher = mock_host_dispatcher(response);
+        let host_dispatcher = mock_host_dispatcher(response);
         let dispatcher = RawEventDispatcher::new(host_dispatcher);
 
         let result = dispatcher.dispatch_invocation_event(MODULE_ID, EVENT_BODY);
@@ -318,7 +318,7 @@ mod tests {
     /// Tests failing to dispatch an event.
     #[test]
     fn dispatch_raw_event_not_dispatched_error() {
-        let host_dispatcher: HostDispatcher = error_host_dispatcher();
+        let host_dispatcher = error_host_dispatcher();
         let dispatcher = RawEventDispatcher::new(host_dispatcher);
 
         let result = dispatcher.dispatch_invocation_event(MODULE_ID, EVENT_BODY);
@@ -335,7 +335,7 @@ mod tests {
     /// Tests failing to deserialize an event response.
     #[test]
     fn dispatch_raw_event_response_deserialization_error() {
-        let host_dispatcher: HostDispatcher = mock_host_dispatcher(RESPONSE_BODY);
+        let host_dispatcher = mock_host_dispatcher(RESPONSE_BODY);
         let dispatcher = RawEventDispatcher::new(host_dispatcher);
 
         let result = dispatcher.dispatch_invocation_event(MODULE_ID, EVENT_BODY);
@@ -353,7 +353,7 @@ mod tests {
     #[test]
     fn dispatch_alb_target_group_request_ok() {
         let response = valid_http_response();
-        let host_dispatcher: HostDispatcher = mock_host_dispatcher(response);
+        let host_dispatcher = mock_host_dispatcher(response);
         let dispatcher = HttpRequestDispatcher::new(host_dispatcher);
 
         let result =
@@ -364,7 +364,7 @@ mod tests {
     /// Tests failing to dispatch an ALB target group request.
     #[test]
     fn dispatch_alb_target_group_request_not_dispatched_error() {
-        let host_dispatcher: HostDispatcher = error_host_dispatcher();
+        let host_dispatcher = error_host_dispatcher();
         let dispatcher = HttpRequestDispatcher::new(host_dispatcher);
 
         let result =
@@ -382,7 +382,7 @@ mod tests {
     /// Tests failing to deserialize an ALB target group request.
     #[test]
     fn dispatch_alb_target_group_deserialization_error() {
-        let host_dispatcher: HostDispatcher = mock_host_dispatcher(RESPONSE_BODY);
+        let host_dispatcher = mock_host_dispatcher(RESPONSE_BODY);
         let dispatcher = HttpRequestDispatcher::new(host_dispatcher);
 
         let result =
@@ -401,7 +401,7 @@ mod tests {
     #[test]
     fn dispatch_api_gateway_proxy_request_ok() {
         let response = valid_http_response();
-        let host_dispatcher: HostDispatcher = mock_host_dispatcher(response);
+        let host_dispatcher = mock_host_dispatcher(response);
         let dispatcher = HttpRequestDispatcher::new(host_dispatcher);
 
         let result =
@@ -412,7 +412,7 @@ mod tests {
     /// Tests failing to dispatch an API Gateway proxy request.
     #[test]
     fn dispatch_api_gateway_proxy_request_not_dispatched_error() {
-        let host_dispatcher: HostDispatcher = error_host_dispatcher();
+        let host_dispatcher = error_host_dispatcher();
         let dispatcher = HttpRequestDispatcher::new(host_dispatcher);
 
         let result =
@@ -430,7 +430,7 @@ mod tests {
     /// Tests failing to deserialize an API Gateway proxy request.
     #[test]
     fn dispatch_api_gateway_proxy_request_deserialization_error() {
-        let host_dispatcher: HostDispatcher = mock_host_dispatcher(RESPONSE_BODY);
+        let host_dispatcher = mock_host_dispatcher(RESPONSE_BODY);
         let dispatcher = HttpRequestDispatcher::new(host_dispatcher);
 
         let result =
@@ -449,7 +449,7 @@ mod tests {
     #[test]
     fn dispatch_api_gatewayv2_proxy_request_ok() {
         let response = valid_http_response();
-        let host_dispatcher: HostDispatcher = mock_host_dispatcher(response);
+        let host_dispatcher = mock_host_dispatcher(response);
         let dispatcher = HttpRequestDispatcher::new(host_dispatcher);
 
         let result = dispatcher
@@ -460,7 +460,7 @@ mod tests {
     /// Tests failing to dispatch an API Gateway v2 proxy request.
     #[test]
     fn dispatch_api_gatewayv2_proxy_request_not_dispatched_error() {
-        let host_dispatcher: HostDispatcher = error_host_dispatcher();
+        let host_dispatcher = error_host_dispatcher();
         let dispatcher = HttpRequestDispatcher::new(host_dispatcher);
 
         let result = dispatcher
@@ -478,7 +478,7 @@ mod tests {
     /// Tests failing to deserialize an API Gateway v2 proxy request.
     #[test]
     fn dispatch_api_gatewayv2_proxy_request_deserialization_error() {
-        let host_dispatcher: HostDispatcher = mock_host_dispatcher(RESPONSE_BODY);
+        let host_dispatcher = mock_host_dispatcher(RESPONSE_BODY);
         let dispatcher = HttpRequestDispatcher::new(host_dispatcher);
 
         let result = dispatcher
@@ -497,7 +497,7 @@ mod tests {
     #[test]
     fn dispatch_alb_target_group_request_json_ok() {
         let response = valid_http_response();
-        let host_dispatcher: HostDispatcher = mock_host_dispatcher(response);
+        let host_dispatcher = mock_host_dispatcher(response);
         let dispatcher = HttpRequestDispatcher::new(host_dispatcher);
 
         let result = serde_json::to_vec(&valid_alb_target_group_request());
@@ -512,7 +512,7 @@ mod tests {
     #[test]
     fn dispatch_api_gateway_proxy_request_json_ok() {
         let response = valid_http_response();
-        let host_dispatcher: HostDispatcher = mock_host_dispatcher(response);
+        let host_dispatcher = mock_host_dispatcher(response);
         let dispatcher = HttpRequestDispatcher::new(host_dispatcher);
 
         let result = serde_json::to_vec(&valid_api_gateway_proxy_request());
@@ -527,7 +527,7 @@ mod tests {
     #[test]
     fn dispatch_api_gatewayv2_proxy_request_json_ok() {
         let response = valid_http_response();
-        let host_dispatcher: HostDispatcher = mock_host_dispatcher(response);
+        let host_dispatcher = mock_host_dispatcher(response);
         let dispatcher = HttpRequestDispatcher::new(host_dispatcher);
 
         let result = serde_json::to_vec(&valid_api_gatewayv2_proxy_request());
@@ -542,7 +542,7 @@ mod tests {
     #[test]
     fn dispatch_raw_event_json_not_http_error() {
         let response = valid_http_response();
-        let host_dispatcher: HostDispatcher = mock_host_dispatcher(response);
+        let host_dispatcher = mock_host_dispatcher(response);
         let dispatcher = HttpRequestDispatcher::new(host_dispatcher);
 
         let result = serde_json::to_vec(EVENT_BODY);
