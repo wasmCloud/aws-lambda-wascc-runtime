@@ -80,9 +80,16 @@ mod tests_common {
         }
     }
 
+    /// Returns a boxed mock `wascc_codec::capabilities::Dispatcher`.
+    pub fn boxed_mock_dispatcher<T: Any + Serialize + Send + Sync>(
+        response: T,
+    ) -> Box<dyn wascc_codec::capabilities::Dispatcher> {
+        Box::new(MockWasccDispatcher::new(response))
+    }
+
     /// Returns a mock `HostDispatcher`.
     pub fn mock_host_dispatcher<T: Any + Serialize + Send + Sync>(response: T) -> HostDispatcher {
-        Arc::new(RwLock::new(Box::new(MockWasccDispatcher::new(response))))
+        Arc::new(RwLock::new(boxed_mock_dispatcher(response)))
     }
 
     /// Represents a `wascc_codec::capabilities::Dispatcher` that returns an error.
@@ -106,9 +113,14 @@ mod tests_common {
         }
     }
 
+    /// Returns a boxed `wascc_codec::capabilities::Dispatcher` that returns an error.
+    pub fn boxed_error_dispatcher() -> Box<dyn wascc_codec::capabilities::Dispatcher> {
+        Box::new(ErrorWasccDispatcher::new())
+    }
+
     /// Returns a `HostDispatcher` that returns an error.
     pub fn error_host_dispatcher() -> HostDispatcher {
-        Arc::new(RwLock::new(Box::new(ErrorWasccDispatcher::new())))
+        Arc::new(RwLock::new(boxed_error_dispatcher()))
     }
 
     /// Returns a query string map for a request.

@@ -407,6 +407,7 @@ mod tests {
         InvocationResponse,
     };
     use std::cell::RefCell;
+    use wascc_codec::serialize;
 
     use crate::tests_common::*;
 
@@ -513,6 +514,26 @@ mod tests {
         )
     }
 
+    /// Returns a serialized test capability configuration.
+    fn capability_configuration() -> Vec<u8> {
+        let mut values = HashMap::new();
+        values.insert("AWS_LAMBDA_RUNTIME_API".into(), "localhost:8080".into());
+        serialize(CapabilityConfiguration {
+            module: MODULE_ID.into(),
+            values,
+        })
+        .unwrap()
+    }
+
+    /// Returns a serialized empty capability configuration.
+    fn empty_capability_configuration() -> Vec<u8> {
+        serialize(CapabilityConfiguration {
+            module: MODULE_ID.into(),
+            values: HashMap::new(),
+        })
+        .unwrap()
+    }
+
     /// Tests that receiving an empty event sends no response or error.
     #[test]
     fn poller_event_kind_none() {
@@ -611,5 +632,55 @@ mod tests {
         assert!(poller.client.initialization_error.borrow().is_none());
         assert!(poller.client.invocation_response.borrow().is_none());
         assert!(poller.client.invocation_error.borrow().is_none());
+    }
+
+    #[test]
+    fn raw_event_provider_unsupported_operation() {
+        let provider = LambdaRawEventProvider::new();
+        let result = provider.configure_dispatch(boxed_mock_dispatcher(RESPONSE_BODY));
+        assert!(result.is_ok());
+
+        let result = provider.handle_call("", OP_BIND_ACTOR, &[]);
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Unsupported operation"));
+
+        let result = provider.handle_call("system", "", &[]);
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Unsupported operation"));
+    }
+
+    #[test]
+    fn raw_event_provider_no_config() {
+        let provider = LambdaRawEventProvider::new();
+        let result = provider.configure_dispatch(boxed_mock_dispatcher(RESPONSE_BODY));
+        assert!(result.is_ok());
+
+        let result = provider.handle_call("system", OP_BIND_ACTOR, &[]);
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Failed to de-serialize"));
+    }
+
+    #[test]
+    fn raw_event_provider_no_endpoint() {
+        let provider = LambdaRawEventProvider::new();
+        let result = provider.configure_dispatch(boxed_mock_dispatcher(RESPONSE_BODY));
+        assert!(result.is_ok());
+
+        let result =
+            provider.handle_call("system", OP_BIND_ACTOR, &empty_capability_configuration());
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Missing configuration value"));
     }
 }
