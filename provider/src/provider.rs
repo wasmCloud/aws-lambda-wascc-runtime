@@ -105,22 +105,24 @@ impl Clone for ShutdownMap {
 }
 
 /// Represents a waSCC AWS Lambda runtime provider.
-struct LambdaProvider<T, CF: ClientFactory<C>, C: Client> {
+struct LambdaProvider<CF, C, DF, D> {
     host_dispatcher: HostDispatcher,
-    client_factory: CF,
     shutdown_map: ShutdownMap,
+    client_factory: CF,
     client_type: PhantomData<C>,
-    dispatcher_type: PhantomData<T>,
+    dispatcher_factory: DF,
+    dispatcher_type: PhantomData<D>,
 }
 
 impl<
-        T: InvocationEventDispatcher + From<HostDispatcher>,
         CF: ClientFactory<C>,
         C: Send + Client + 'static,
-    > LambdaProvider<T, CF, C>
+        DF: DispatcherFactory<D>,
+        D: Send + InvocationEventDispatcher + 'static,
+    > LambdaProvider<CF, C, DF, D>
 {
     /// Creates a new, empty `LambdaProvider`.
-    pub fn new(client_factory: CF) -> Self {
+    pub fn new(client_factory: CF, dispatcher_factory: DF) -> Self {
         Self {
             host_dispatcher: Arc::new(RwLock::new(Box::new(
                 wascc_codec::capabilities::NullDispatcher::new(),
@@ -128,6 +130,7 @@ impl<
             shutdown_map: ShutdownMap::new(),
             client_factory,
             client_type: PhantomData,
+            dispatcher_factory,
             dispatcher_type: PhantomData,
         }
     }
@@ -184,10 +187,12 @@ impl<
         let client = self.client_factory.new_client(&endpoint);
         let poller = Poller::new(&module_id, client, shutdown_map);
 
+        let dispatcher = self.dispatcher_factory.new_dispatcher(host_dispatcher);
+
         thread::spawn(move || {
             info!("Starting poller for actor {}", module_id);
 
-            poller.run(T::from(host_dispatcher));
+            poller.run(dispatcher);
         });
 
         Ok(())
@@ -215,13 +220,16 @@ impl<
 /// This capability provider dispatches events from
 /// the AWS Lambda machinery as raw events (without translation).
 struct LambdaRawEventProvider<CF: ClientFactory<C>, C: Client>(
-    LambdaProvider<RawEventDispatcher, CF, C>,
+    LambdaProvider<CF, C, RawEventDispatcherFactory, RawEventDispatcher>,
 );
 
 impl<CF: ClientFactory<C>, C: Send + Client + 'static> LambdaRawEventProvider<CF, C> {
     /// Creates a new, empty `LambdaRawEventProvider`.
     pub fn new(client_factory: CF) -> Self {
-        Self(LambdaProvider::new(client_factory))
+        Self(LambdaProvider::new(
+            client_factory,
+            RawEventDispatcherFactory::new(),
+        ))
     }
 }
 
@@ -266,13 +274,16 @@ impl<CF: Any + Send + Sync + ClientFactory<C>, C: Any + Send + Sync + Client> Ca
 /// This capability provider dispatches events from
 /// the AWS Lambda machinery as HTTP requests.
 struct LambdaHttpRequestProvider<CF: ClientFactory<C>, C: Client>(
-    LambdaProvider<HttpRequestDispatcher, CF, C>,
+    LambdaProvider<CF, C, HttpRequestDispatcherFactory, HttpRequestDispatcher>,
 );
 
 impl<CF: ClientFactory<C>, C: Send + Client + 'static> LambdaHttpRequestProvider<CF, C> {
     /// Creates a new, empty `LambdaHttpRequestProvider`.
     pub fn new(client_factory: CF) -> Self {
-        Self(LambdaProvider::new(client_factory))
+        Self(LambdaProvider::new(
+            client_factory,
+            HttpRequestDispatcherFactory::new(),
+        ))
     }
 }
 
