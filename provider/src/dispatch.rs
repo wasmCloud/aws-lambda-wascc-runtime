@@ -167,13 +167,6 @@ impl Clone for HttpRequestDispatcher {
     }
 }
 
-impl From<HostDispatcher> for HttpRequestDispatcher {
-    /// Converts a host dispatcher to an `HttpRequestDispatcher`.
-    fn from(host_dispatcher: HostDispatcher) -> Self {
-        Self::new(host_dispatcher)
-    }
-}
-
 impl InvocationEventDispatcher for HttpRequestDispatcher {
     /// Attempts to dispatch a Lambda invocation event, returning an invocation response.
     /// The bodies of the invocation event and response are passed and returned.
@@ -247,13 +240,6 @@ impl Clone for RawEventDispatcher {
         Self {
             host_dispatcher: Arc::clone(&self.host_dispatcher),
         }
-    }
-}
-
-impl From<HostDispatcher> for RawEventDispatcher {
-    /// Converts a host dispatcher to an `RawEventDispatcher`.
-    fn from(host_dispatcher: HostDispatcher) -> Self {
-        Self::new(host_dispatcher)
     }
 }
 
