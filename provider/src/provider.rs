@@ -38,7 +38,7 @@ use crate::HostDispatcher;
 /// Represents the "read" logic for stopping a provider.
 trait StopperR {
     /// Returns whether or not to stop.
-    fn stop(&self) -> bool;
+    fn stop(&self) -> anyhow::Result<bool>;
 }
 
 /// Represents the "write" logic for stopping a provider.
@@ -76,8 +76,8 @@ impl Clone for Stopper {
 
 impl StopperR for Stopper {
     /// Returns whether or not to stop.
-    fn stop(&self) -> bool {
-        self.stop.load(Ordering::Relaxed)
+    fn stop(&self) -> anyhow::Result<bool> {
+        Ok(self.stop.load(Ordering::Relaxed))
     }
 }
 
@@ -390,8 +390,13 @@ impl<C: Client, S: StopperR> Poller<C, S> {
     /// Runs the poller until shutdown.
     fn run(&self, dispatcher: impl InvocationEventDispatcher) {
         loop {
-            if self.stopper.stop() {
-                break;
+            match self.stopper.stop() {
+                Err(e) => {
+                    error!("{}", e);
+                    break;
+                }
+                Ok(stop) if stop => break,
+                _ => {}
             }
 
             // Get next event.
