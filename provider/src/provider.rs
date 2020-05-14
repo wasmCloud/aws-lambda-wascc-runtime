@@ -17,13 +17,13 @@
 //
 
 use wascc_codec::capabilities::CapabilityProvider;
-use wascc_codec::core::{CapabilityConfiguration, OP_BIND_ACTOR, OP_REMOVE_ACTOR};
+use wascc_codec::core::{CapabilityConfiguration, OP_BIND_ACTOR};
 use wascc_codec::deserialize;
 
 use std::any::Any;
-use std::collections::HashMap;
 use std::env;
 use std::marker::PhantomData;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, RwLock};
 use std::thread;
 
@@ -35,79 +35,71 @@ use crate::HostDispatcher;
 // These capability providers are designed to be statically linked into its host.
 //
 
-/// Represents a shared shutdown map, module_id => shutdown_flag.
-struct ShutdownMap {
-    map: Arc<RwLock<HashMap<String, bool>>>,
+/// Represents the "read" logic for stopping a provider.
+trait StopperR {
+    /// Returns whether or not to stop.
+    fn stop(&self) -> anyhow::Result<bool>;
 }
 
-impl ShutdownMap {
-    /// Creates a new, empty `ShutdownMap`.
+/// Represents the "write" logic for stopping a provider.
+trait StopperW {
+    /// Stops the provider.
+    /// Doesn't wait for the provider to stop.
+    fn stop(&self) -> anyhow::Result<()>;
+
+    /// Waits for the provider to stop.
+    fn wait(&mut self) -> anyhow::Result<()>;
+}
+
+/// Represents the "standard" provider stopper.
+struct Stopper {
+    stop: Arc<AtomicBool>,
+}
+
+impl Stopper {
+    /// Creates a new `Stopper`.
     fn new() -> Self {
         Self {
-            map: Arc::new(RwLock::new(HashMap::new())),
+            stop: Arc::new(AtomicBool::new(false)),
         }
-    }
-
-    /// Returns whether the shutdown flag has been set for the specified module.
-    fn get(&self, module_id: &str) -> anyhow::Result<bool> {
-        Ok(*self
-            .map
-            .read()
-            .map_err(|e| anyhow!("{}", e))?
-            .get(module_id)
-            .ok_or_else(|| anyhow!("Unknown actor {}", module_id))?)
-    }
-
-    /// Puts the shutdown flag value for the specified module.
-    /// Any previous value is overwritten.
-    fn put(&self, module_id: &str, flag: bool) -> anyhow::Result<()> {
-        self.map
-            .write()
-            .map_err(|e| anyhow!("{}", e))?
-            .insert(module_id.into(), flag);
-
-        Ok(())
-    }
-
-    /// Puts the shutdown flag value for the specified module if present.
-    /// The previous value is overwritten.
-    /// Returns whether a value was present.
-    fn put_if_present(&self, module_id: &str, flag: bool) -> anyhow::Result<bool> {
-        let mut lock = self.map.write().map_err(|e| anyhow!("{}", e))?;
-        if !lock.contains_key(module_id) {
-            return Ok(false);
-        }
-        *lock
-            .get_mut(module_id)
-            .ok_or_else(|| anyhow!("Unknown actor {}", module_id))? = flag;
-
-        Ok(true)
-    }
-
-    /// Removes any flag value for the specified module.
-    fn remove(&self, module_id: &str) -> anyhow::Result<()> {
-        self.map
-            .write()
-            .map_err(|e| anyhow!("{}", e))?
-            .remove(module_id);
-
-        Ok(())
     }
 }
 
-impl Clone for ShutdownMap {
+impl Clone for Stopper {
     /// Returns a copy of the value.
     fn clone(&self) -> Self {
         Self {
-            map: Arc::clone(&self.map),
+            stop: Arc::clone(&self.stop),
         }
+    }
+}
+
+impl StopperR for Stopper {
+    /// Returns whether or not to stop.
+    fn stop(&self) -> anyhow::Result<bool> {
+        Ok(self.stop.load(Ordering::Relaxed))
+    }
+}
+
+impl StopperW for Stopper {
+    /// Stops the provider.
+    /// Doesn't wait for the provider to stop.
+    fn stop(&self) -> anyhow::Result<()> {
+        self.stop.store(true, Ordering::Relaxed);
+
+        Ok(())
+    }
+
+    /// Waits for the provider to stop.
+    fn wait(&mut self) -> anyhow::Result<()> {
+        Ok(())
     }
 }
 
 /// Represents a waSCC AWS Lambda runtime provider.
-struct LambdaProvider<CF, C, DF, D> {
+struct LambdaProvider<S, CF, C, DF, D> {
     host_dispatcher: HostDispatcher,
-    shutdown_map: ShutdownMap,
+    stopper: S,
     client_factory: CF,
     client_type: PhantomData<C>,
     dispatcher_factory: DF,
@@ -115,19 +107,20 @@ struct LambdaProvider<CF, C, DF, D> {
 }
 
 impl<
+        S: Clone + Send + StopperR + 'static,
         CF: ClientFactory<C>,
         C: Send + Client + 'static,
         DF: DispatcherFactory<D>,
         D: Send + InvocationEventDispatcher + 'static,
-    > LambdaProvider<CF, C, DF, D>
+    > LambdaProvider<S, CF, C, DF, D>
 {
     /// Creates a new, empty `LambdaProvider`.
-    pub fn new(client_factory: CF, dispatcher_factory: DF) -> Self {
+    pub fn new(stopper: S, client_factory: CF, dispatcher_factory: DF) -> Self {
         Self {
             host_dispatcher: Arc::new(RwLock::new(Box::new(
                 wascc_codec::capabilities::NullDispatcher::new(),
             ))),
-            shutdown_map: ShutdownMap::new(),
+            stopper,
             client_factory,
             client_type: PhantomData,
             dispatcher_factory,
@@ -156,10 +149,7 @@ impl<
             OP_BIND_ACTOR if actor == "system" => {
                 self.start_polling(deserialize(msg).map_err(|e| anyhow!("{}", e))?)?
             }
-            OP_REMOVE_ACTOR if actor == "system" => {
-                self.stop_polling(deserialize(msg).map_err(|e| anyhow!("{}", e))?)?
-            }
-            _ => return Err(anyhow!("Unsupported operation: {}", op)),
+            _ => return Err(anyhow!("Unsupported operation: {}/{}", op, actor)),
         }
 
         Ok(vec![])
@@ -180,12 +170,10 @@ impl<
         };
 
         let module_id = config.module;
-        let shutdown_map = self.shutdown_map.clone();
-        // Initialize this module's shutdown flag.
-        shutdown_map.put(&module_id, false)?;
+        let stopper = self.stopper.clone();
 
         let client = self.client_factory.new_client(&endpoint);
-        let poller = Poller::new(&module_id, client, shutdown_map);
+        let poller = Poller::new(&module_id, client, stopper);
 
         let dispatcher = self.dispatcher_factory.new_dispatcher(host_dispatcher);
 
@@ -197,36 +185,22 @@ impl<
 
         Ok(())
     }
-
-    /// Stops any running Lambda poller.
-    fn stop_polling(&self, config: CapabilityConfiguration) -> anyhow::Result<()> {
-        debug!("awslambda:provider stop_polling");
-
-        let module_id = &config.module;
-        if !self.shutdown_map.put_if_present(module_id, false)? {
-            error!(
-                "Received request to stop poller for unknown actor {}. Ignoring",
-                module_id
-            );
-            return Ok(());
-        }
-        self.shutdown_map.remove(module_id)?;
-
-        Ok(())
-    }
 }
 
 /// Represents a waSCC AWS Lambda raw event provider.
 /// This capability provider dispatches events from
 /// the AWS Lambda machinery as raw events (without translation).
-struct LambdaRawEventProvider<CF: ClientFactory<C>, C: Client>(
-    LambdaProvider<CF, C, RawEventDispatcherFactory, RawEventDispatcher>,
+struct LambdaRawEventProvider<S, CF: ClientFactory<C>, C: Client>(
+    LambdaProvider<S, CF, C, RawEventDispatcherFactory, RawEventDispatcher>,
 );
 
-impl<CF: ClientFactory<C>, C: Send + Client + 'static> LambdaRawEventProvider<CF, C> {
+impl<S: Clone + Send + StopperR + 'static, CF: ClientFactory<C>, C: Send + Client + 'static>
+    LambdaRawEventProvider<S, CF, C>
+{
     /// Creates a new, empty `LambdaRawEventProvider`.
-    pub fn new(client_factory: CF) -> Self {
+    pub fn new(stopper: S, client_factory: CF) -> Self {
         Self(LambdaProvider::new(
+            stopper,
             client_factory,
             RawEventDispatcherFactory::new(),
         ))
@@ -235,11 +209,14 @@ impl<CF: ClientFactory<C>, C: Send + Client + 'static> LambdaRawEventProvider<CF
 
 /// Returns an instance of the default raw event capability provider.
 pub fn default_raw_event_provider() -> impl CapabilityProvider {
-    LambdaRawEventProvider::new(RuntimeClientFactory::new())
+    LambdaRawEventProvider::new(Stopper::new(), RuntimeClientFactory::new())
 }
 
-impl<CF: Any + Send + Sync + ClientFactory<C>, C: Any + Send + Sync + Client> CapabilityProvider
-    for LambdaRawEventProvider<CF, C>
+impl<
+        S: Clone + Send + Sync + StopperR + 'static,
+        CF: Any + Send + Sync + ClientFactory<C>,
+        C: Any + Send + Sync + Client,
+    > CapabilityProvider for LambdaRawEventProvider<S, CF, C>
 {
     /// Returns the capability ID in the formated `namespace:id`.
     fn capability_id(&self) -> &'static str {
@@ -273,14 +250,17 @@ impl<CF: Any + Send + Sync + ClientFactory<C>, C: Any + Send + Sync + Client> Ca
 /// Represents a waSCC AWS Lambda HTTP request provider.
 /// This capability provider dispatches events from
 /// the AWS Lambda machinery as HTTP requests.
-struct LambdaHttpRequestProvider<CF: ClientFactory<C>, C: Client>(
-    LambdaProvider<CF, C, HttpRequestDispatcherFactory, HttpRequestDispatcher>,
+struct LambdaHttpRequestProvider<S, CF: ClientFactory<C>, C: Client>(
+    LambdaProvider<S, CF, C, HttpRequestDispatcherFactory, HttpRequestDispatcher>,
 );
 
-impl<CF: ClientFactory<C>, C: Send + Client + 'static> LambdaHttpRequestProvider<CF, C> {
+impl<S: Clone + Send + StopperR + 'static, CF: ClientFactory<C>, C: Send + Client + 'static>
+    LambdaHttpRequestProvider<S, CF, C>
+{
     /// Creates a new, empty `LambdaHttpRequestProvider`.
-    pub fn new(client_factory: CF) -> Self {
+    pub fn new(stopper: S, client_factory: CF) -> Self {
         Self(LambdaProvider::new(
+            stopper,
             client_factory,
             HttpRequestDispatcherFactory::new(),
         ))
@@ -289,11 +269,14 @@ impl<CF: ClientFactory<C>, C: Send + Client + 'static> LambdaHttpRequestProvider
 
 /// Returns an instance of the default HTTP request capability provider.
 pub fn default_http_request_provider() -> impl CapabilityProvider {
-    LambdaHttpRequestProvider::new(RuntimeClientFactory::new())
+    LambdaHttpRequestProvider::new(Stopper::new(), RuntimeClientFactory::new())
 }
 
-impl<CF: Any + Send + Sync + ClientFactory<C>, C: Any + Send + Sync + Client> CapabilityProvider
-    for LambdaHttpRequestProvider<CF, C>
+impl<
+        S: Clone + Send + Sync + StopperR + 'static,
+        CF: Any + Send + Sync + ClientFactory<C>,
+        C: Any + Send + Sync + Client,
+    > CapabilityProvider for LambdaHttpRequestProvider<S, CF, C>
 {
     /// Returns the capability ID in the formated `namespace:id`.
     fn capability_id(&self) -> &'static str {
@@ -388,27 +371,32 @@ impl DispatcherFactory<RawEventDispatcher> for RawEventDispatcherFactory {
 }
 
 /// Polls the Lambda event machinery using the specified client.
-struct Poller<C> {
+struct Poller<C, S> {
     client: C,
     module_id: String,
-    shutdown_map: ShutdownMap,
+    stopper: S,
 }
 
-impl<C: Client> Poller<C> {
+impl<C: Client, S: StopperR> Poller<C, S> {
     /// Creates a new `Poller`.
-    fn new(module_id: &str, client: C, shutdown_map: ShutdownMap) -> Self {
+    fn new(module_id: &str, client: C, stopper: S) -> Self {
         Self {
             client,
             module_id: module_id.into(),
-            shutdown_map,
+            stopper,
         }
     }
 
     /// Runs the poller until shutdown.
     fn run(&self, dispatcher: impl InvocationEventDispatcher) {
         loop {
-            if self.shutdown() {
-                break;
+            match self.stopper.stop() {
+                Err(e) => {
+                    error!("{}", e);
+                    break;
+                }
+                Ok(stop) if stop => break,
+                _ => {}
             }
 
             // Get next event.
@@ -468,17 +456,6 @@ impl<C: Client> Poller<C> {
             Err(e) => error!("Unable to send invocation response: {}", e),
         }
     }
-
-    /// Returns whether the shutdown flag is set.
-    fn shutdown(&self) -> bool {
-        match self.shutdown_map.get(&self.module_id) {
-            Ok(f) => f,
-            Err(e) => {
-                error!("{}", e);
-                true
-            }
-        }
-    }
 }
 
 #[cfg(test)]
@@ -488,6 +465,7 @@ mod tests {
         InitializationError, InvocationError, InvocationEvent, InvocationEventBuilder,
         InvocationResponse,
     };
+    use std::collections::HashMap;
     use wascc_codec::serialize;
 
     use crate::tests_common::*;
@@ -506,15 +484,15 @@ mod tests {
     /// Creates `MockClient` instances.
     struct MockClientFactory {
         event_kind: EventKind,
-        shutdown_map: ShutdownMap,
+        stopper: Stopper,
     }
 
     impl MockClientFactory {
         /// Creates a new `MockClientFactory`.
-        fn new(event_kind: EventKind, shutdown_map: ShutdownMap) -> Self {
+        fn new(event_kind: EventKind, stopper: Stopper) -> Self {
             Self {
                 event_kind,
-                shutdown_map,
+                stopper,
             }
         }
     }
@@ -522,7 +500,7 @@ mod tests {
     impl ClientFactory<MockClient> for MockClientFactory {
         /// Creates a new `MockClient`.
         fn new_client(&self, _endpoint: &str) -> MockClient {
-            MockClient::new(self.event_kind.clone(), self.shutdown_map.clone())
+            MockClient::new(self.event_kind.clone(), self.stopper.clone())
         }
     }
 
@@ -532,18 +510,18 @@ mod tests {
         initialization_error: RwLock<Option<InitializationError>>,
         invocation_error: RwLock<Option<InvocationError>>,
         invocation_response: RwLock<Option<InvocationResponse>>,
-        shutdown_map: ShutdownMap,
+        stopper: Stopper,
     }
 
     impl MockClient {
         /// Returns a new `MockClient`.
-        fn new(event_kind: EventKind, shutdown_map: ShutdownMap) -> Self {
+        fn new(event_kind: EventKind, stopper: Stopper) -> Self {
             Self {
                 event_kind,
                 initialization_error: RwLock::new(None),
                 invocation_error: RwLock::new(None),
                 invocation_response: RwLock::new(None),
-                shutdown_map,
+                stopper,
             }
         }
     }
@@ -552,7 +530,7 @@ mod tests {
         /// Returns the next AWS Lambda invocation event.
         fn next_invocation_event(&self) -> anyhow::Result<Option<InvocationEvent>> {
             // Shutdown after one event.
-            self.shutdown_map.put(MODULE_ID, true)?;
+            <Stopper as StopperW>::stop(&self.stopper)?;
 
             match &self.event_kind {
                 EventKind::None => Ok(None),
@@ -619,23 +597,19 @@ mod tests {
     }
 
     /// Returns a mock poller.
-    fn mock_poller(event_kind: EventKind) -> Poller<MockClient> {
-        let shutdown_map = ShutdownMap::new();
-        let result = shutdown_map.put(MODULE_ID, false);
-        assert!(result.is_ok());
+    fn mock_poller(event_kind: EventKind) -> Poller<MockClient, Stopper> {
+        let stopper = Stopper::new();
 
         Poller::new(
             MODULE_ID,
-            MockClient::new(event_kind, shutdown_map.clone()),
-            shutdown_map,
+            MockClient::new(event_kind, stopper.clone()),
+            stopper,
         )
     }
 
     /// Returns a `MockClientFactory`.
     fn mock_client_factory(event_kind: EventKind) -> impl ClientFactory<MockClient> {
-        let shutdown_map = ShutdownMap::new();
-        shutdown_map.put(MODULE_ID, false).unwrap();
-        MockClientFactory::new(event_kind, shutdown_map)
+        MockClientFactory::new(event_kind, Stopper::new())
     }
 
     /// Returns a serialized test capability configuration.
@@ -800,12 +774,16 @@ mod tests {
     fn raw_event_provider_ok() {
         let client_factory =
             mock_client_factory(EventKind::Event(InvocationEvent::with_request_id()));
-        let provider = LambdaRawEventProvider::new(client_factory);
+        let mut stopper = Stopper::new();
+        let provider = LambdaRawEventProvider::new(stopper.clone(), client_factory);
         let mock_dispatcher = boxed_mock_dispatcher(RESPONSE_BODY);
         let result = provider.configure_dispatch(mock_dispatcher);
         assert!(result.is_ok());
 
         let result = provider.handle_call("system", OP_BIND_ACTOR, &capability_configuration());
+        assert!(result.is_ok());
+
+        let result = stopper.wait();
         assert!(result.is_ok());
     }
 }
