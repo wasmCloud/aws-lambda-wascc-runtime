@@ -43,8 +43,12 @@ resource "aws_lambda_function" "example" {
   environment {
     variables = {
       RUST_BACKTRACE = "1"
-      RUST_LOG       = "info,cranelift_wasm=warn"
+      RUST_LOG       = "info,cranelift_wasm=warn,cranelift_codegen=info"
     }
+  }
+
+  tracing_config {
+    mode = "Active"
   }
 }
 
@@ -99,6 +103,33 @@ EOT
 resource "aws_iam_role_policy_attachment" "cloudwatch_logs" {
   role       = aws_iam_role.example.name
   policy_arn = aws_iam_policy.cloudwatch_logs_policy.arn
+}
+
+resource "aws_iam_policy" "xray" {
+  name = "waSCC-example-custom-Lambda-XRayPolicy"
+
+  policy = <<EOT
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "xray:PutTraceSegments",
+        "xray:PutTelemetryRecords"
+      ],
+      "Resource": [
+        "*"
+      ]
+    }
+  ]
+}
+EOT
+}
+
+resource "aws_iam_role_policy_attachment" "xray" {
+  role       = aws_iam_role.example.name
+  policy_arn = aws_iam_policy.xray.arn
 }
 
 //
