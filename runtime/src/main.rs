@@ -184,6 +184,7 @@ fn lambda_provider_config() -> HashMap<String, String> {
         "AWS_LAMBDA_LOG_GROUP_NAME",
         "AWS_LAMBDA_LOG_STREAM_NAME",
         "AWS_LAMBDA_RUNTIME_API",
+        "AWS_XRAY_DAEMON_ADDRESS",
         "LAMBDA_RUNTIME_DIR",
         "LAMBDA_TASK_ROOT",
     ];
