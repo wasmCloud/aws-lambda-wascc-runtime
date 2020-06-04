@@ -79,20 +79,12 @@ fn load_and_run() -> anyhow::Result<()> {
     let logging_provider_config = HashMap::new(); // No configuration.
 
     // All of these capabilities can be configured for any actor.
-    let any_capabilities: Vec<(String, &HashMap<String, String>)> = vec![(
-        logging_provider.capability_id().into(),
-        &logging_provider_config,
-    )];
+    let any_capabilities: Vec<(String, &HashMap<String, String>)> =
+        vec![("wascc:logging".into(), &logging_provider_config)];
     // Exactly one of these capabilities can be configured for a single actor.
     let exactly_one_capabilities: Vec<(String, &HashMap<String, String>)> = vec![
-        (
-            http_request_provider.capability_id().into(),
-            &lambda_provider_config,
-        ),
-        (
-            raw_event_provider.capability_id().into(),
-            &lambda_provider_config,
-        ),
+        ("wascc:http_server".into(), &lambda_provider_config),
+        ("awslambda:event".into(), &lambda_provider_config),
     ];
 
     add_capability(&host, http_request_provider)?;
@@ -115,11 +107,10 @@ fn load_and_run() -> anyhow::Result<()> {
 
 /// Adds a built-in capability provider.
 fn add_capability(host: &WasccHost, instance: impl CapabilityProvider) -> anyhow::Result<()> {
-    let id = instance.capability_id();
     let capability = NativeCapability::from_instance(instance, None)
-        .map_err(|e| anyhow!("Failed to create native capability {}: {}", id, e))?;
+        .map_err(|e| anyhow!("Failed to create native capability: {}", e))?;
     host.add_native_capability(capability)
-        .map_err(|e| anyhow!("Failed to load native capability {}: {}", id, e))?;
+        .map_err(|e| anyhow!("Failed to load native capability: {}", e))?;
 
     Ok(())
 }
