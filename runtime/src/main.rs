@@ -24,7 +24,10 @@ use provider::{
     default_http_request_provider, default_raw_event_provider, initerr_reporter,
     InitializationErrorReporter,
 };
-use wascc_codec::capabilities::CapabilityProvider;
+use wascc_codec::capabilities::{
+    CapabilityDescriptor, CapabilityProvider, OP_GET_CAPABILITY_DESCRIPTOR,
+};
+use wascc_codec::{deserialize, SYSTEM_ACTOR};
 use wascc_host::{HostManifest, NativeCapability, WasccHost};
 use wascc_logging::LoggingProvider;
 
@@ -72,24 +75,27 @@ fn load_and_run() -> anyhow::Result<()> {
     let host = WasccHost::new();
 
     let http_request_provider = default_http_request_provider();
+    let http_request_provider_id = capability_id(&http_request_provider)?;
     let raw_event_provider = default_raw_event_provider();
+    let raw_event_provider_id = capability_id(&raw_event_provider)?;
     let logging_provider = LoggingProvider::new();
+    let logging_provider_id = capability_id(&logging_provider)?;
 
     let lambda_provider_config = lambda_provider_config();
     let logging_provider_config = HashMap::new(); // No configuration.
 
     // All of these capabilities can be configured for any actor.
-    let any_capabilities: Vec<(String, &HashMap<String, String>)> =
-        vec![("wascc:logging".into(), &logging_provider_config)];
+    let any_capabilities: Vec<(&str, &HashMap<String, String>)> =
+        vec![(&logging_provider_id, &logging_provider_config)];
     // Exactly one of these capabilities can be configured for a single actor.
-    let exactly_one_capabilities: Vec<(String, &HashMap<String, String>)> = vec![
-        ("wascc:http_server".into(), &lambda_provider_config),
-        ("awslambda:event".into(), &lambda_provider_config),
+    let exactly_one_capabilities: Vec<(&str, &HashMap<String, String>)> = vec![
+        (&http_request_provider_id, &lambda_provider_config),
+        (&raw_event_provider_id, &lambda_provider_config),
     ];
 
-    add_capability(&host, http_request_provider)?;
-    add_capability(&host, raw_event_provider)?;
-    add_capability(&host, logging_provider)?;
+    add_capability(&host, http_request_provider, &http_request_provider_id)?;
+    add_capability(&host, raw_event_provider, &raw_event_provider_id)?;
+    add_capability(&host, logging_provider, &logging_provider_id)?;
 
     // Load from well-known manifest file and expand any environment variables.
     if let Some(cwd) = std::env::current_dir()?.to_str() {
@@ -106,11 +112,15 @@ fn load_and_run() -> anyhow::Result<()> {
 }
 
 /// Adds a built-in capability provider.
-fn add_capability(host: &WasccHost, instance: impl CapabilityProvider) -> anyhow::Result<()> {
+fn add_capability(
+    host: &WasccHost,
+    instance: impl CapabilityProvider,
+    id: &str,
+) -> anyhow::Result<()> {
     let capability = NativeCapability::from_instance(instance, None)
-        .map_err(|e| anyhow!("Failed to create native capability: {}", e))?;
+        .map_err(|e| anyhow!("Failed to create native capability {}: {}", id, e))?;
     host.add_native_capability(capability)
-        .map_err(|e| anyhow!("Failed to load native capability: {}", e))?;
+        .map_err(|e| anyhow!("Failed to load native capability {}: {}", id, e))?;
 
     Ok(())
 }
@@ -121,8 +131,8 @@ fn add_capability(host: &WasccHost, instance: impl CapabilityProvider) -> anyhow
 /// - Attempt to configure one actor with one of the `exactly_one` capabilities
 fn autoconfigure_actors(
     host: &WasccHost,
-    any: Vec<(String, &HashMap<String, String>)>,
-    exactly_one: Vec<(String, &HashMap<String, String>)>,
+    any: Vec<(&str, &HashMap<String, String>)>,
+    exactly_one: Vec<(&str, &HashMap<String, String>)>,
 ) {
     for actor in host.actors() {
         for capability in &any {
@@ -137,6 +147,17 @@ fn autoconfigure_actors(
             }
         }
     }
+}
+
+/// Returns a capability provider's capability ID.
+fn capability_id(instance: &impl CapabilityProvider) -> anyhow::Result<String> {
+    let bytes: [u8; 0] = [];
+    let result = instance
+        .handle_call(SYSTEM_ACTOR, OP_GET_CAPABILITY_DESCRIPTOR, &bytes[..])
+        .map_err(|e| anyhow!("{}", e))?;
+    let desc: CapabilityDescriptor = deserialize(&result).map_err(|e| anyhow!("{}", e))?;
+
+    Ok(desc.id)
 }
 
 /// Configures an actor with a capability.
