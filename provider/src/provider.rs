@@ -16,9 +16,11 @@
 // waSCC AWS Lambda Runtime Providers
 //
 
-use wascc_codec::capabilities::CapabilityProvider;
+use wascc_codec::capabilities::{
+    CapabilityDescriptor, CapabilityProvider, OperationDirection, OP_GET_CAPABILITY_DESCRIPTOR,
+};
 use wascc_codec::core::{CapabilityConfiguration, OP_BIND_ACTOR};
-use wascc_codec::deserialize;
+use wascc_codec::{deserialize, serialize, SYSTEM_ACTOR};
 
 use std::any::Any;
 use std::env;
@@ -30,6 +32,9 @@ use std::thread;
 use crate::dispatch::{HttpRequestDispatcher, InvocationEventDispatcher, RawEventDispatcher};
 use crate::lambda::{Client, InvocationError, InvocationResponse, RuntimeClient};
 use crate::HostDispatcher;
+
+const VERSION: &str = env!("CARGO_PKG_VERSION");
+const REVISION: u32 = 2; // Increment for each crates publish
 
 //
 // These capability providers are designed to be statically linked into its host.
@@ -146,7 +151,7 @@ impl<
         info!("awslambda:provider handle_call `{}` from `{}`", op, actor);
 
         match op {
-            OP_BIND_ACTOR if actor == "system" => {
+            OP_BIND_ACTOR if actor == SYSTEM_ACTOR => {
                 self.start_polling(deserialize(msg).map_err(|e| anyhow!("{}", e))?)?
             }
             _ => return Err(anyhow!("Unsupported operation: {}/{}", op, actor)),
@@ -205,6 +210,25 @@ impl<S: Clone + Send + StopperR + 'static, CF: ClientFactory<C>, C: Send + Clien
             RawEventDispatcherFactory::new(),
         ))
     }
+
+    /// Returns a serialized capability descriptor for this provider.
+    fn get_descriptor(&self) -> anyhow::Result<Vec<u8>> {
+        Ok(serialize(
+            CapabilityDescriptor::builder()
+                .id("awslambda:event")
+                .name("waSCC AWS Lambda raw event provider")
+                .long_description("A capability provider that handles AWS Lambda events")
+                .version(VERSION)
+                .revision(REVISION)
+                .with_operation(
+                    codec::OP_HANDLE_EVENT,
+                    OperationDirection::ToActor,
+                    "Delivers a JSON event to an actor and expects a JSON response in return",
+                )
+                .build(),
+        )
+        .map_err(|e| anyhow!("{}", e))?)
+    }
 }
 
 /// Returns an instance of the default raw event capability provider.
@@ -218,11 +242,6 @@ impl<
         C: Any + Send + Sync + Client,
     > CapabilityProvider for LambdaRawEventProvider<S, CF, C>
 {
-    /// Returns the capability ID in the formated `namespace:id`.
-    fn capability_id(&self) -> &'static str {
-        "awslambda:event"
-    }
-
     /// Called when the host runtime is ready and has configured a dispatcher.
     fn configure_dispatch(
         &self,
@@ -238,12 +257,11 @@ impl<
         op: &str,
         msg: &[u8],
     ) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
-        self.0.handle_call(actor, op, msg).map_err(|e| e.into())
-    }
-
-    /// Returns the human-readable, friendly name of this capability provider.
-    fn name(&self) -> &'static str {
-        "waSCC AWS Lambda raw event provider"
+        match op {
+            OP_GET_CAPABILITY_DESCRIPTOR if actor == SYSTEM_ACTOR => self.get_descriptor(),
+            _ => self.0.handle_call(actor, op, msg),
+        }
+        .map_err(|e| e.into())
     }
 }
 
@@ -265,6 +283,25 @@ impl<S: Clone + Send + StopperR + 'static, CF: ClientFactory<C>, C: Send + Clien
             HttpRequestDispatcherFactory::new(),
         ))
     }
+
+    /// Returns a serialized capability descriptor for this provider.
+    fn get_descriptor(&self) -> anyhow::Result<Vec<u8>> {
+        Ok(serialize(
+            CapabilityDescriptor::builder()
+                .id("wascc:http_server")
+                .name("waSCC AWS Lambda HTTP request provider")
+                .long_description("A capability provider that handles AWS Lambda HTTP requests")
+                .version(VERSION)
+                .revision(REVISION)
+                .with_operation(
+                    wascc_codec::http::OP_HANDLE_REQUEST,
+                    OperationDirection::ToActor,
+                    "Delivers an HTTP request to an actor and expects a HTTP response in return",
+                )
+                .build(),
+        )
+        .map_err(|e| anyhow!("{}", e))?)
+    }
 }
 
 /// Returns an instance of the default HTTP request capability provider.
@@ -278,11 +315,6 @@ impl<
         C: Any + Send + Sync + Client,
     > CapabilityProvider for LambdaHttpRequestProvider<S, CF, C>
 {
-    /// Returns the capability ID in the formated `namespace:id`.
-    fn capability_id(&self) -> &'static str {
-        "wascc:http_server"
-    }
-
     /// Called when the host runtime is ready and has configured a dispatcher.
     fn configure_dispatch(
         &self,
@@ -298,12 +330,11 @@ impl<
         op: &str,
         msg: &[u8],
     ) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
-        self.0.handle_call(actor, op, msg).map_err(|e| e.into())
-    }
-
-    /// Returns the human-readable, friendly name of this capability provider.
-    fn name(&self) -> &'static str {
-        "waSCC AWS Lambda HTTP request provider"
+        match op {
+            OP_GET_CAPABILITY_DESCRIPTOR if actor == SYSTEM_ACTOR => self.get_descriptor(),
+            _ => self.0.handle_call(actor, op, msg),
+        }
+        .map_err(|e| e.into())
     }
 }
 
@@ -733,7 +764,7 @@ mod tests {
             .to_string()
             .contains("Unsupported operation"));
 
-        let result = provider.handle_call("system", "", &[]);
+        let result = provider.handle_call(SYSTEM_ACTOR, "", &[]);
         assert!(result.is_err());
         assert!(result
             .unwrap_err()
@@ -747,7 +778,7 @@ mod tests {
         let result = provider.configure_dispatch(boxed_mock_dispatcher(RESPONSE_BODY));
         assert!(result.is_ok());
 
-        let result = provider.handle_call("system", OP_BIND_ACTOR, &[]);
+        let result = provider.handle_call(SYSTEM_ACTOR, OP_BIND_ACTOR, &[]);
         assert!(result.is_err());
         assert!(result
             .unwrap_err()
@@ -761,8 +792,11 @@ mod tests {
         let result = provider.configure_dispatch(boxed_mock_dispatcher(RESPONSE_BODY));
         assert!(result.is_ok());
 
-        let result =
-            provider.handle_call("system", OP_BIND_ACTOR, &empty_capability_configuration());
+        let result = provider.handle_call(
+            SYSTEM_ACTOR,
+            OP_BIND_ACTOR,
+            &empty_capability_configuration(),
+        );
         assert!(result.is_err());
         assert!(result
             .unwrap_err()
@@ -780,7 +814,7 @@ mod tests {
         let result = provider.configure_dispatch(mock_dispatcher);
         assert!(result.is_ok());
 
-        let result = provider.handle_call("system", OP_BIND_ACTOR, &capability_configuration());
+        let result = provider.handle_call(SYSTEM_ACTOR, OP_BIND_ACTOR, &capability_configuration());
         assert!(result.is_ok());
 
         let result = stopper.wait();
