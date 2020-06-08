@@ -1,6 +1,6 @@
 [package]
 name = "provider"
-version = "0.7.3"
+version = "0.7.4"
 authors = ["Kit Ewbank <Kit_Ewbank@hotmail.com>"]
 edition = "2018"
 license = "Apache-2.0"
@@ -8,16 +8,16 @@ readme = "README.md"
 
 [dependencies]
 log = "0.4.8"
-anyhow = "1.0.28"
-wascc-codec = "0.6.0"
-reqwest = { version = "0.10.4", features = ["blocking", "json"] }
-serde = "1.0.106"
-serde_json = "1.0.51"
+anyhow = "1.0.31"
+wascc-codec = "0.7.1"
+reqwest = { version = "0.10.6", features = ["blocking", "json"] }
+serde = "1.0.111"
+serde_json = "1.0.53"
 codec = { path = "../codec" }
 aws_lambda_events = "0.3.0"
-base64 = "0.12.0"
+base64 = "0.12.1"
 url = "2.1.1"
-thiserror = "1.0.15"
+thiserror = "1.0.19"
 
 [dev-dependencies]
 httptest = "0.13.1"
