@@ -151,9 +151,8 @@ fn autoconfigure_actors(
 
 /// Returns a capability provider's capability ID.
 fn capability_id(instance: &impl CapabilityProvider) -> anyhow::Result<String> {
-    let bytes: [u8; 0] = [];
     let result = instance
-        .handle_call(SYSTEM_ACTOR, OP_GET_CAPABILITY_DESCRIPTOR, &bytes[..])
+        .handle_call(SYSTEM_ACTOR, OP_GET_CAPABILITY_DESCRIPTOR, &[])
         .map_err(|e| anyhow!("{}", e))?;
     let desc: CapabilityDescriptor = deserialize(&result).map_err(|e| anyhow!("{}", e))?;
 
