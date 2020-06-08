@@ -12,7 +12,7 @@ log = "0.4.8"
 anyhow = "1.0.31"
 wascc-codec = "0.7.1"
 provider = { path = "../provider" }
-wascc-host = { git = "https://github.com/wascc/wascc-host", branch = "feature/capdescriptors", features = ["manifest"] }
+wascc-host = { version = "0.8.0", features = ["manifest"] }
 wascc-logging = { version = "0.7.0", features = ["static_plugin"] }
 
 [[bin]]
