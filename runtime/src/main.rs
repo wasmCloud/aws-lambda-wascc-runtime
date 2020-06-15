@@ -31,8 +31,11 @@ use wascc_codec::{deserialize, SYSTEM_ACTOR};
 use wascc_host::{HostManifest, NativeCapability, WasccHost};
 use wascc_logging::LoggingProvider;
 
-use std::collections::HashMap;
-use std::env;
+use std::{
+    collections::HashMap,
+    env,
+    str::FromStr
+};
 
 const MANIFEST_FILE: &str = "manifest.yaml";
 
@@ -96,6 +99,12 @@ fn load_and_run() -> anyhow::Result<()> {
     add_capability(&host, http_request_provider, &http_request_provider_id)?;
     add_capability(&host, raw_event_provider, &raw_event_provider_id)?;
     add_capability(&host, logging_provider, &logging_provider_id)?;
+
+    // X-Ray.
+    let xray_client = match lambda_provider_config.get("AWS_XRAY_DAEMON_ADDRESS") {
+        Some(xray_daemon_address) => Some(xray::Client::from_str(xray_daemon_address)?),
+        None => None,
+    };
 
     // Load from well-known manifest file and expand any environment variables.
     if let Some(cwd) = std::env::current_dir()?.to_str() {

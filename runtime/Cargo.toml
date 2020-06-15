@@ -14,6 +14,7 @@ wascc-codec = "0.7.1"
 provider = { path = "../provider" }
 wascc-host = { version = "0.9.0", features = ["manifest"] }
 wascc-logging = { version = "0.7.0", features = ["static_plugin"] }
+xray = { git = "https://github.com/ewbankkit/xray" }
 
 [[bin]]
 name = "bootstrap"
