@@ -19,6 +19,8 @@
 #[macro_use]
 extern crate anyhow;
 
+mod middleware;
+
 use log::{debug, error, info, warn};
 use provider::{
     default_http_request_provider, default_raw_event_provider, initerr_reporter,
@@ -34,7 +36,6 @@ use wascc_logging::LoggingProvider;
 use std::{
     collections::HashMap,
     env,
-    str::FromStr
 };
 
 const MANIFEST_FILE: &str = "manifest.yaml";
@@ -101,9 +102,9 @@ fn load_and_run() -> anyhow::Result<()> {
     add_capability(&host, logging_provider, &logging_provider_id)?;
 
     // X-Ray.
-    let xray_client = match lambda_provider_config.get("AWS_XRAY_DAEMON_ADDRESS") {
-        Some(xray_daemon_address) => Some(xray::Client::from_str(xray_daemon_address)?),
-        None => None,
+    if let Some(xray_daemon_address) = lambda_provider_config.get("AWS_XRAY_DAEMON_ADDRESS") {
+        info!("Adding X-Ray middleware. Daemon address: {}", xray_daemon_address);
+        host.add_middleware(middleware::xray::XRayMiddleware::new(xray_daemon_address)?);
     };
 
     // Load from well-known manifest file and expand any environment variables.
