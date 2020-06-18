@@ -33,10 +33,7 @@ use wascc_codec::{deserialize, SYSTEM_ACTOR};
 use wascc_host::{HostManifest, NativeCapability, WasccHost};
 use wascc_logging::LoggingProvider;
 
-use std::{
-    collections::HashMap,
-    env,
-};
+use std::{collections::HashMap, env};
 
 const MANIFEST_FILE: &str = "manifest.yaml";
 
@@ -103,7 +100,10 @@ fn load_and_run() -> anyhow::Result<()> {
 
     // X-Ray.
     if let Some(xray_daemon_address) = lambda_provider_config.get("AWS_XRAY_DAEMON_ADDRESS") {
-        info!("Adding X-Ray middleware. Daemon address: {}", xray_daemon_address);
+        info!(
+            "Adding X-Ray middleware. Daemon address: {}",
+            xray_daemon_address
+        );
         host.add_middleware(middleware::xray::XRayMiddleware::new(xray_daemon_address)?);
     };
 
