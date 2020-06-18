@@ -104,7 +104,11 @@ fn load_and_run() -> anyhow::Result<()> {
             "Adding X-Ray middleware. Daemon address: {}",
             xray_daemon_address
         );
-        host.add_middleware(middleware::xray::XRayMiddleware::new(xray_daemon_address)?);
+        host.add_middleware(middleware::xray::XRayMiddleware::new(
+            xray_daemon_address,
+            lambda_provider_config.get("AWS_LAMBDA_FUNCTION_NAME"),
+            lambda_provider_config.get("AWS_LAMBDA_FUNCTION_VERSION"),
+        )?);
     };
 
     // Load from well-known manifest file and expand any environment variables.

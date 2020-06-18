@@ -18,12 +18,12 @@
 
 use log::trace;
 use wascc_host::{Invocation, InvocationResponse, InvocationTarget, Middleware};
+use xray::{Client, Segment};
 
 use std::{
     collections::HashMap,
     str::FromStr,
     sync::{Arc, Mutex},
-    time::{Duration, Instant},
 };
 
 /// Represents the metrics collected by the middleware.
@@ -42,14 +42,14 @@ impl Default for Metrics {
 
 /// Represents an in-flight invocation.
 struct InFlightInvocation {
-    start_time: Instant,
+    segment: Segment,
     operation: String,
     target: InvocationTarget,
 }
 
 /// Represents a completed invocation.
 struct CompletedInvocation {
-    duration: Duration,
+    segment: Segment,
     error: Option<String>,
     operation: String,
     target: InvocationTarget,
@@ -59,7 +59,7 @@ impl InFlightInvocation {
     /// Returns a new `InFlightInvocation` with start_time initialized to the current time.
     fn new(operation: &str, target: InvocationTarget) -> Self {
         InFlightInvocation {
-            start_time: Instant::now(),
+            segment: Segment::begin(operation),
             operation: operation.into(),
             target,
         }
@@ -67,8 +67,10 @@ impl InFlightInvocation {
 
     /// Completes an in-flight invocation.
     fn complete(self, response: &InvocationResponse) -> CompletedInvocation {
+        let mut segment = self.segment;
+        segment.end();
         CompletedInvocation {
-            duration: self.start_time.elapsed(),
+            segment,
             error: response.error.clone(),
             operation: self.operation,
             target: self.target,
@@ -78,23 +80,30 @@ impl InFlightInvocation {
 
 /// Represents communication with the AWS X-Ray daemon.
 pub struct XRayMiddleware {
+    client: Client,
     metrics: Arc<Mutex<Metrics>>,
-    xray_client: xray::Client,
+    name: Option<String>,
+    version: Option<String>,
 }
 
 impl XRayMiddleware {
     /// Returns a new `XRayMiddleware` for the specified X-Ray daemon.
-    pub fn new(daemon_address: &str) -> anyhow::Result<Self> {
-        let xray_client = xray::Client::from_str(daemon_address)?;
+    pub fn new(
+        daemon_address: &str,
+        name: Option<&String>,
+        version: Option<&String>,
+    ) -> anyhow::Result<Self> {
+        let client = Client::from_str(daemon_address)?;
         Ok(XRayMiddleware {
+            client,
             metrics: Arc::new(Mutex::new(Metrics::default())),
-            xray_client,
+            name: name.cloned(),
+            version: version.cloned(),
         })
     }
 
     /// Sends a segment to the X-Ray daemon.
-    fn send_to_daemon(&self) {
-    }
+    fn send_to_daemon(&self) {}
 
     /// Starts an invocation timer.
     fn start_timer(&self, inv: &Invocation) -> anyhow::Result<()> {
@@ -142,7 +151,7 @@ impl Middleware for XRayMiddleware {
             inv.target
         );
 
-        self.start_timer(&inv).map_err(|e| to_host_error(e))?;
+        self.start_timer(&inv).map_err(to_host_error)?;
 
         Ok(inv)
     }
@@ -158,7 +167,7 @@ impl Middleware for XRayMiddleware {
             response.error
         );
 
-        self.stop_timer(&response).map_err(|e| to_host_error(e))?;
+        self.stop_timer(&response).map_err(to_host_error)?;
 
         Ok(response)
     }
@@ -173,7 +182,7 @@ impl Middleware for XRayMiddleware {
             inv.target
         );
 
-        self.start_timer(&inv).map_err(|e| to_host_error(e))?;
+        self.start_timer(&inv).map_err(to_host_error)?;
 
         Ok(inv)
     }
@@ -189,7 +198,7 @@ impl Middleware for XRayMiddleware {
             response.error
         );
 
-        self.stop_timer(&response).map_err(|e| to_host_error(e))?;
+        self.stop_timer(&response).map_err(to_host_error)?;
 
         Ok(response)
     }
