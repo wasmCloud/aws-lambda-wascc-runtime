@@ -16,9 +16,11 @@
 // waSCC AWS Lambda Runtime AWS X-Ray Middleware
 //
 
-use log::trace;
+use log::{debug, trace};
+use serde::Serialize;
+use serde_json::Value;
 use wascc_host::{Invocation, InvocationResponse, InvocationTarget, Middleware};
-use xray::{Client, Segment};
+use xray::{Annotation, Cause, Client, Exception, Segment, Service};
 
 use std::{
     collections::HashMap,
@@ -43,38 +45,70 @@ impl Default for Metrics {
 /// Represents an in-flight invocation.
 struct InFlightInvocation {
     segment: Segment,
-    operation: String,
-    target: InvocationTarget,
 }
 
 /// Represents a completed invocation.
 struct CompletedInvocation {
     segment: Segment,
-    error: Option<String>,
-    operation: String,
-    target: InvocationTarget,
 }
 
 impl InFlightInvocation {
     /// Returns a new `InFlightInvocation` with start_time initialized to the current time.
-    fn new(operation: &str, target: InvocationTarget) -> Self {
-        InFlightInvocation {
-            segment: Segment::begin(operation),
-            operation: operation.into(),
-            target,
-        }
+    fn new(name: &str, version: &str, inv: &Invocation) -> Self {
+        let mut segment = Segment::begin(name);
+        segment.service = Some(Service {
+            version: Some(version.into()),
+        });
+
+        let mut annotations = HashMap::new();
+        annotations.insert(
+            "operation".into(),
+            Annotation::String(inv.operation.clone()),
+        );
+        annotations.insert("origin".into(), Annotation::String(inv.origin.clone()));
+        match &inv.target {
+            InvocationTarget::Actor(a) => {
+                annotations.insert("target.actor".into(), Annotation::String(a.clone()));
+            }
+            InvocationTarget::Capability {
+                capid: c,
+                binding: b,
+            } => {
+                annotations.insert("target.capid".into(), Annotation::String(c.clone()));
+                annotations.insert("target.binding".into(), Annotation::String(b.clone()));
+            }
+        };
+        segment.annotations = Some(annotations);
+
+        let mut metadata = HashMap::new();
+        metadata.insert("invocation.id".into(), Value::String(inv.id.clone()));
+        segment.metadata = Some(metadata);
+
+        InFlightInvocation { segment }
     }
 
     /// Completes an in-flight invocation.
     fn complete(self, response: &InvocationResponse) -> CompletedInvocation {
         let mut segment = self.segment;
         segment.end();
-        CompletedInvocation {
-            segment,
-            error: response.error.clone(),
-            operation: self.operation,
-            target: self.target,
+
+        if let Some(error) = &response.error {
+            segment.cause = Some(Cause::Description {
+                exceptions: vec![Exception {
+                    id: "1234567890ABCDEF".into(),
+                    messages: Some(error.clone()),
+                    remote: None,
+                    truncated: None,
+                    skipped: None,
+                    cause: None,
+                    stack: Vec::new(),
+                }],
+                working_directory: "".into(),
+                paths: Vec::new(),
+            });
         }
+
+        CompletedInvocation { segment }
     }
 }
 
@@ -82,33 +116,36 @@ impl InFlightInvocation {
 pub struct XRayMiddleware {
     client: Client,
     metrics: Arc<Mutex<Metrics>>,
-    name: Option<String>,
-    version: Option<String>,
+    name: String,
+    version: String,
 }
 
 impl XRayMiddleware {
     /// Returns a new `XRayMiddleware` for the specified X-Ray daemon.
-    pub fn new(
-        daemon_address: &str,
-        name: Option<&String>,
-        version: Option<&String>,
-    ) -> anyhow::Result<Self> {
+    pub fn new(daemon_address: &str, name: &str, version: &str) -> anyhow::Result<Self> {
         let client = Client::from_str(daemon_address)?;
         Ok(XRayMiddleware {
             client,
             metrics: Arc::new(Mutex::new(Metrics::default())),
-            name: name.cloned(),
-            version: version.cloned(),
+            name: name.into(),
+            version: version.into(),
         })
     }
 
     /// Sends a segment to the X-Ray daemon.
-    fn send_to_daemon(&self) {}
+    fn send_to_daemon<S>(&self, data: &S) -> anyhow::Result<()>
+    where
+        S: Serialize,
+    {
+        self.client.send(data)?;
+
+        Ok(())
+    }
 
     /// Starts an invocation timer.
     fn start_timer(&self, inv: &Invocation) -> anyhow::Result<()> {
         let mut metrics = self.metrics.lock().map_err(|e| anyhow!("{}", e))?;
-        let state = InFlightInvocation::new(&inv.operation, inv.target.clone());
+        let state = InFlightInvocation::new(&self.name, &self.version, &inv);
 
         if metrics
             .in_flight_invocations
@@ -167,7 +204,10 @@ impl Middleware for XRayMiddleware {
             response.error
         );
 
-        self.stop_timer(&response).map_err(to_host_error)?;
+        let completed_invocation = self.stop_timer(&response).map_err(to_host_error)?;
+        debug!("Sending segment to X-Ray daemon");
+        self.send_to_daemon(&completed_invocation.segment)
+            .map_err(to_host_error)?;
 
         Ok(response)
     }
@@ -198,7 +238,10 @@ impl Middleware for XRayMiddleware {
             response.error
         );
 
-        self.stop_timer(&response).map_err(to_host_error)?;
+        let completed_invocation = self.stop_timer(&response).map_err(to_host_error)?;
+        debug!("Sending segment to X-Ray daemon");
+        self.send_to_daemon(&completed_invocation.segment)
+            .map_err(to_host_error)?;
 
         Ok(response)
     }

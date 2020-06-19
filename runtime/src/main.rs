@@ -106,8 +106,12 @@ fn load_and_run() -> anyhow::Result<()> {
         );
         host.add_middleware(middleware::xray::XRayMiddleware::new(
             xray_daemon_address,
-            lambda_provider_config.get("AWS_LAMBDA_FUNCTION_NAME"),
-            lambda_provider_config.get("AWS_LAMBDA_FUNCTION_VERSION"),
+            lambda_provider_config
+                .get("AWS_LAMBDA_FUNCTION_NAME")
+                .ok_or_else(|| anyhow!("Lambda function name not set"))?,
+            lambda_provider_config
+                .get("AWS_LAMBDA_FUNCTION_VERSION")
+                .ok_or_else(|| anyhow!("Lambda function version not set"))?,
         )?);
     };
 
