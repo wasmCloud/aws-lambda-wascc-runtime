@@ -1,7 +1,6 @@
 # API Gateway HTTP Request Invocation
 
-This actor is identical to the [Krustlet Uppercase](https://github.com/deislabs/krustlet/tree/master/demos/wascc/uppercase) demo,
-the only change being that the actor is signed with the `awslambda:runtime` capability instead of the standard HTTP server capability.
+This actor is identical to the [Krustlet Uppercase](https://github.com/deislabs/krustlet/tree/master/demos/wascc/uppercase) demo.
 
 ### Build
 
