@@ -3,7 +3,7 @@
 all: apply
 
 apply: slim.zip
-	terraform12 apply
+	terraform apply
 
 slim.zip: ../target/release/bootstrap
 	zip -j $@ $^
