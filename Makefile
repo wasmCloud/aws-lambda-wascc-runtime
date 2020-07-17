@@ -1,6 +1,6 @@
 COLOR ?= auto
 CARGO = cargo --color $(COLOR)
-BUILDER = ewbankkit/rust-amazonlinux:1.43.0-2018.03.0.20191219.0
+BUILDER = ewbankkit/rust-amazonlinux:1.45.0-2018.03.0.20200602.1
 
 .PHONY: all build check clean doc fmt release test update
 
