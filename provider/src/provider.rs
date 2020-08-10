@@ -256,7 +256,7 @@ impl<
         actor: &str,
         op: &str,
         msg: &[u8],
-    ) -> Result<Vec<u8>, Box<dyn std::error::Error+ Send + Sync>> {
+    ) -> Result<Vec<u8>, Box<dyn std::error::Error + Send + Sync>> {
         match op {
             OP_GET_CAPABILITY_DESCRIPTOR if actor == SYSTEM_ACTOR => self.get_descriptor(),
             _ => self.0.handle_call(actor, op, msg),
@@ -319,7 +319,7 @@ impl<
     fn configure_dispatch(
         &self,
         dispatcher: Box<dyn wascc_codec::capabilities::Dispatcher>,
-    ) -> Result<(), Box<dyn std::error::Error+ Send + Sync>> {
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         self.0.configure_dispatch(dispatcher).map_err(|e| e.into())
     }
 
@@ -329,7 +329,7 @@ impl<
         actor: &str,
         op: &str,
         msg: &[u8],
-    ) -> Result<Vec<u8>, Box<dyn std::error::Error+ Send + Sync>> {
+    ) -> Result<Vec<u8>, Box<dyn std::error::Error + Send + Sync>> {
         match op {
             OP_GET_CAPABILITY_DESCRIPTOR if actor == SYSTEM_ACTOR => self.get_descriptor(),
             _ => self.0.handle_call(actor, op, msg),
