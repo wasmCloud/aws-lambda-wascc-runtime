@@ -79,7 +79,12 @@ mod tests_common {
     impl<T: Any + Serialize + Send + Sync> wascc_codec::capabilities::Dispatcher
         for MockWasccDispatcher<T>
     {
-        fn dispatch(&self, actor: &str, op: &str, msg: &[u8]) -> Result<Vec<u8>, Box<dyn Error>> {
+        fn dispatch(
+            &self,
+            actor: &str,
+            op: &str,
+            msg: &[u8],
+        ) -> Result<Vec<u8>, Box<dyn Error + Send + Sync>> {
             // Record the parameters.
             let mut lock = self.actor.write().unwrap();
             *lock = Some(actor.into());
@@ -122,7 +127,7 @@ mod tests_common {
             _actor: &str,
             _op: &str,
             _msg: &[u8],
-        ) -> Result<Vec<u8>, Box<dyn Error>> {
+        ) -> Result<Vec<u8>, Box<dyn Error + Send + Sync>> {
             Err(anyhow!(ERROR_MESSAGE).into())
         }
     }
