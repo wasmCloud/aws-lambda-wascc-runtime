@@ -43,7 +43,7 @@ impl Response {
     }
 
     /// Returns a response that contains the JSON serialization of an object.
-    pub fn json<T>(t: &T) -> Result<Response, Box<dyn std::error::Error>>
+    pub fn json<T>(t: &T) -> Result<Response, Box<dyn std::error::Error + Send + Sync>>
     where
         T: serde::ser::Serialize + ?Sized,
     {
