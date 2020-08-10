@@ -13,7 +13,7 @@ anyhow = "1.0.32"
 wascc-codec = "0.8.0"
 provider = { path = "../provider" }
 wascc-host = { version = "0.12.0", features = ["manifest"], git = "https://github.com/wascc/wascc-host", rev = "310d1de5d32347c945da4ab8749cd0f8e5ea5f08" }
-wascc-logging = { version = "0.7.0", features = ["static_plugin"] }
+wascc-logging = { version = "0.8.0", features = ["static_plugin"], git = "https://github.com/TheNeikos/logging-provider", rev = "b722eb8cb8c802c2ca47e92cb57d8e25b6273f60" }
 
 [[bin]]
 name = "bootstrap"
