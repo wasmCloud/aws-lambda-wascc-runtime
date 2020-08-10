@@ -1,6 +1,6 @@
 [package]
 name = "runtime"
-version = "0.7.6"
+version = "0.8.0"
 authors = ["Kit Ewbank <Kit_Ewbank@hotmail.com>"]
 edition = "2018"
 license = "Apache-2.0"
@@ -9,10 +9,10 @@ readme = "README.md"
 [dependencies]
 env_logger = "0.7.1"
 log = "0.4.11"
-anyhow = "1.0.31"
-wascc-codec = "0.7.2"
+anyhow = "1.0.32"
+wascc-codec = "0.8.0"
 provider = { path = "../provider" }
-wascc-host = { version = "0.10.1", features = ["manifest"] }
+wascc-host = { version = "0.12.0", features = ["manifest"], git = "https://github.com/wascc/wascc-host", rev = "310d1de5d32347c945da4ab8749cd0f8e5ea5f08" }
 wascc-logging = { version = "0.7.0", features = ["static_plugin"] }
 
 [[bin]]
