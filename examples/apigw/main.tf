@@ -7,7 +7,7 @@ terraform {
 }
 
 provider "aws" {
-  version = ">= 2.59.0"
+  version = ">= 3.3.0"
 }
 
 //
@@ -35,7 +35,7 @@ resource "aws_apigatewayv2_api" "example" {
 //
 
 data "aws_lambda_layer_version" "slim" {
-  layer_name = "wascc-slim"
+  layer_name = "wascc-slim-al2"
 }
 
 resource "aws_lambda_function" "example" {
@@ -44,7 +44,7 @@ resource "aws_lambda_function" "example" {
   function_name    = "waSCC-example-apigw"
   role             = aws_iam_role.example.arn
   handler          = "doesnt.matter"
-  runtime          = "provided"
+  runtime          = "provided.al2"
   memory_size      = 256
   timeout          = 90
 

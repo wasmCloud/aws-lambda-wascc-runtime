@@ -14,7 +14,7 @@ This workspace includes multiple crates:
 
 ## Build
 
-Build a binary suitable for running on Amazon Linux using a [builder image](https://hub.docker.com/repository/docker/ewbankkit/rust-amazonlinux):
+Build a binary suitable for running on Amazon Linux 2 using a [builder image](https://hub.docker.com/repository/docker/ewbankkit/rust-amazonlinux):
 
 ```console
 $ make release
