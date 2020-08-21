@@ -7,7 +7,7 @@ terraform {
 }
 
 provider "aws" {
-  version = ">= 2.50.0"
+  version = ">= 3.3.0"
 }
 
 //
@@ -15,13 +15,13 @@ provider "aws" {
 //
 
 resource "aws_lambda_layer_version" "slim" {
-  layer_name  = "wascc-slim"
+  layer_name  = "wascc-slim-al2"
   description = "waSCC custom runtime (slim)"
 
   filename         = "${path.module}/slim.zip"
   source_code_hash = filebase64sha256("${path.module}/slim.zip")
 
-  compatible_runtimes = ["provided"]
+  compatible_runtimes = ["provided.al2"]
 }
 
 //
